@@ -1,19 +1,21 @@
+import * as CANNON from "cannon-es";
 import * as THREE from "three";
 import WebGL from "three/addons/capabilities/WebGL.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GUI } from "dat.gui";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import CharacterControl from "./assets/utils/character";
+import CannonDebugger from "cannon-es-debugger";
 
 // SETUP
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(
-  45,
+  75,
   window.innerWidth / window.innerHeight,
   0.1,
   1000
 );
-camera.position.y = 5;
+camera.position.y = 2;
 camera.position.z = 5;
 camera.position.x = 0;
 
@@ -22,8 +24,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 
 const control = new OrbitControls(camera, renderer.domElement);
-control.enableDamping = true;
-control.minDistance = 5;
+control.enableDamping = false;
+control.minDistance = 2;
 control.maxDistance = 15;
 control.enablePan = false;
 control.maxPolarAngle = Math.PI / 2 - 0.05;
@@ -33,6 +35,106 @@ control.update();
 // LIGHT
 const light = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(light);
+
+// CANNON INIT
+const physicModels = new Map();
+const meshModels = new Map();
+const world = new CANNON.World({
+  gravity: new CANNON.Vec3(0, -9.82, 0),
+});
+
+const groundBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: new CANNON.Plane(),
+});
+groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(groundBody);
+physicModels.set("plane", groundBody);
+
+world.addEventListener("beginContact", (event) => {
+  const { bodyA, bodyB } = event;
+
+  physicModels.forEach((v, k) => {
+    if (v === bodyB) {
+      if (/^sphere_/.test(k)) {
+        const geometry = new THREE.SphereGeometry(3, 100, 100);
+        const material = new THREE.MeshBasicMaterial({ color: "#fff2" });
+        const sphere = new THREE.Mesh(geometry, material);
+        meshModels.get(k).add(sphere);
+
+        // Define the initial and target scale values
+        const initialScale = 2; // Initial scale value
+        const targetScale = 1; // Target scale value
+        const duration = 2000; // Duration of the animation in milliseconds
+
+        // Define a variable to store the current scale
+        let currentScale = initialScale;
+
+        // Function to animate the scaling of the model
+        function animateScale() {
+          // Calculate the scale increment based on the duration
+          const scaleIncrement = (targetScale - initialScale) / duration;
+
+          // Create a variable to store the animation start time
+          let startTime = null;
+
+          // Define the animation function
+          function scaleAnimation(timestamp) {
+            if (!startTime) startTime = timestamp; // Store the start time of the animation
+
+            // Calculate the elapsed time since the start of the animation
+            const elapsed = timestamp - startTime;
+
+            // Calculate the new scale value based on the elapsed time and scale increment
+            currentScale = initialScale + scaleIncrement * elapsed;
+
+            // Apply the scale to the model
+            sphere.scale.set(currentScale, currentScale, currentScale);
+
+            // Check if the animation duration has been reached
+            if (elapsed < duration) {
+              // Continue the animation
+              requestAnimationFrame(scaleAnimation);
+            }
+          }
+
+          // Start the animation
+          requestAnimationFrame(scaleAnimation);
+        }
+
+        // Call the animateScale function to start the scaling animation
+        animateScale();
+      }
+    }
+  });
+});
+
+createPersonPhysic();
+function createPersonPhysic() {
+  // Create the body for the person
+  const personBody = new CANNON.Body({
+    type: CANNON.Body.KINEMATIC,
+    mass: 0,
+  });
+
+  // Create shapes for different body parts
+  const headShape = new CANNON.Sphere(0.06); // Create a sphere shape for the head
+  const torsoShape = new CANNON.Box(new CANNON.Vec3(0.15, 0.1, 0.14)); // Create a box shape for the torso
+  const limbShape = new CANNON.Box(new CANNON.Vec3(0.15, 0.2, 0.17)); // Create a box shape for the limbs
+
+  // Position the shapes relative to the body
+  const headOffset = new CANNON.Vec3(0, 0.65, -0.04);
+  const torsoOffset = new CANNON.Vec3(0, 0.5, 0);
+  const limbOffset = new CANNON.Vec3(0, 0.2, -0.03);
+
+  // Add shapes to the body with their respective offsets
+  personBody.addShape(headShape, headOffset);
+  personBody.addShape(torsoShape, torsoOffset);
+  personBody.addShape(limbShape, limbOffset);
+
+  world.addBody(personBody);
+  physicModels.set("person", personBody);
+}
 
 // RENDER MODELS
 const gltfLoader = new GLTFLoader();
@@ -45,6 +147,7 @@ gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   });
   model.scale.set(0.4, 0.4, 0.4);
   scene.add(model);
+  meshModels.set("person", model);
 
   const mixer = new THREE.AnimationMixer(model);
   const animations = new Map();
@@ -55,7 +158,7 @@ gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   });
 
   characterControl = new CharacterControl(
-    model,
+    physicModels.get("person"),
     mixer,
     control,
     camera,
@@ -64,138 +167,53 @@ gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   );
 });
 
-class CharacterControl {
-  constructor(
-    model,
-    mixer,
-    orbitControl,
-    camera,
-    animations = [],
-    currentAction
-  ) {
-    this.model = model;
-    this.currentAction = currentAction;
-    this.mixer = mixer;
-    this.orbitControl = orbitControl;
-    this.camera = camera;
-    this.animations = animations;
-    this.toggleRun = false;
+function randomCycle(x, z, key) {
+  const cycle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5, 0.01, 2, 100),
+    new THREE.MeshBasicMaterial({ color: "#FFFFFF" })
+  );
+  // cycle.rotation.set(-Math.PI / 2, 0, 0);
+  scene.add(cycle);
 
-    this.walkDirection = new THREE.Vector3();
-    this.rotateAngle = new THREE.Vector3(0, 1, 0);
-    this.rotateQuarternion = new THREE.Quaternion();
-    this.cameraTarget = new THREE.Vector3();
+  const cycleBody = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape: new CANNON.Sphere(0.5),
+  });
+  cycleBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+  cycleBody.position.set(x, 0.01, z);
+  world.addBody(cycleBody);
 
-    this.fadeDuration = 0.2;
-    this.runVelocity = 5;
-    this.walkVelocity = 2;
+  physicModels.set(key, cycleBody);
+  meshModels.set(key, cycle);
+}
 
-    this.animations.forEach((value, key) => {
-      if (key === currentAction) {
-        value.play();
-      }
+randomCycle(0, 4, "sphere_1");
+randomCycle(0, -4, "sphere_2");
+randomCycle(4, 0, "sphere_3");
+randomCycle(-4, 0, "sphere_4");
+
+// createStair();
+function createStair() {
+  // Define the size of the steps and the number of steps
+  const stepSize = 0.2; // Adjust this value to control the size of each step
+  const numSteps = 5; // Adjust this value to control the number of steps
+
+  // Create the stair steps
+  for (let i = 0; i < numSteps; i++) {
+    const position = new CANNON.Vec3(0, i * 0.07, i * stepSize); // Adjust the position of each step
+
+    // Create a box shape for each step
+    const stepShape = new CANNON.Box(new CANNON.Vec3(2, 0.03, stepSize / 1));
+
+    // Create a rigid body for each step using the box shape
+    const stepBody = new CANNON.Body({
+      mass: 0, // Set the mass to zero to create a static object
+      shape: stepShape,
+      position,
     });
-  }
 
-  switchRunToggle() {
-    this.toggleRun = !this.toggleRun;
-  }
-
-  update(delta, keysPressed) {
-    const isDirectionPressed = ["w", "s", "d", "a"].some(
-      (key) => keysPressed[key] === true
-    );
-    let action = "Idle";
-    if (isDirectionPressed) {
-      action = "Walk";
-
-      if (this.toggleRun) {
-        action = "Run";
-      }
-    }
-
-    if (this.currentAction !== action) {
-      const prevAction = this.animations.get(this.currentAction);
-      const currentAction = this.animations.get(action);
-
-      prevAction.fadeOut(this.fadeDuration);
-      currentAction.reset().fadeIn(this.fadeDuration).play();
-      this.currentAction = action;
-    }
-    this.mixer.update(delta);
-
-    if (this.currentAction !== "Idle") {
-      // calculate toward camera direction
-      let angleYCameraDirection = Math.atan2(
-        this.camera.position.x - this.model.position.x,
-        this.camera.position.z - this.model.position.z
-      );
-
-      // diagonal movement angle offset
-      let directionOffset = this.directionOffset(keysPressed);
-
-      // rotate model
-      this.rotateQuarternion.setFromAxisAngle(
-        this.rotateAngle,
-        angleYCameraDirection + directionOffset
-      );
-      this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
-
-      // calculate direction
-      this.camera.getWorldDirection(this.walkDirection);
-      this.walkDirection.y = 0;
-      this.walkDirection.normalize();
-      this.walkDirection.applyAxisAngle(this.rotateAngle, directionOffset);
-
-      // run/walk velocity
-      const velocity =
-        this.currentAction == "Run" ? this.runVelocity : this.walkVelocity;
-
-      // move model & camera
-      const moveX = this.walkDirection.x * velocity * delta;
-      const moveZ = this.walkDirection.z * velocity * delta;
-      this.model.position.x += moveX;
-      this.model.position.z += moveZ;
-      this.updateCameraTarget(moveX, moveZ);
-    }
-  }
-
-  updateCameraTarget(moveX, moveZ) {
-    // move camera
-    this.camera.position.x += moveX;
-    this.camera.position.z += moveZ;
-
-    // update camera target
-    this.cameraTarget.x = this.model.position.x;
-    this.cameraTarget.y = this.model.position.y + 1;
-    this.cameraTarget.z = this.model.position.z;
-    this.orbitControl.target = this.cameraTarget;
-  }
-
-  directionOffset(keysPressed) {
-    let directionOffset = 0; // w
-
-    if (keysPressed["w"]) {
-      if (keysPressed["a"]) {
-        directionOffset = Math.PI / 4; // w+a
-      } else if (keysPressed["d"]) {
-        directionOffset = -Math.PI / 4; // w+d
-      }
-    } else if (keysPressed["s"]) {
-      if (keysPressed["a"]) {
-        directionOffset = Math.PI / 4 + Math.PI / 2; // s+a
-      } else if (keysPressed["d"]) {
-        directionOffset = -Math.PI / 4 - Math.PI / 2; // s+d
-      } else {
-        directionOffset = Math.PI; // s
-      }
-    } else if (keysPressed["a"]) {
-      directionOffset = Math.PI / 2; // a
-    } else if (keysPressed["d"]) {
-      directionOffset = -Math.PI / 2; // d
-    }
-
-    return directionOffset;
+    // Add the step body to the world
+    world.addBody(stepBody);
   }
 }
 
@@ -206,10 +224,9 @@ const plane = new THREE.Mesh(
     side: THREE.DoubleSide,
   })
 );
-plane.rotation.x = -Math.PI / 2;
-scene.add(plane);
 
-scene.add(new THREE.GridHelper(10, 30));
+scene.add(plane);
+meshModels.set("plane", plane);
 
 // FUNCTION HANDLER
 const keysPressed = {};
@@ -218,15 +235,13 @@ initActionKeyboard();
 
 function initActionKeyboard() {
   const onKeyDown = function (event) {
-    if (event.shiftKey && characterControl) {
-      return characterControl.switchRunToggle();
-    }
-
-    keysPressed[event.key] = true;
+    characterControl?.switchRunToggle(event.shiftKey);
+    keysPressed[event.key.toLowerCase()] = true;
   };
 
   const onKeyUp = function (event) {
-    keysPressed[event.key] = false;
+    characterControl?.switchRunToggle(event.shiftKey);
+    keysPressed[event.key.toLowerCase()] = false;
   };
 
   function onWindowResize() {
@@ -241,57 +256,30 @@ function initActionKeyboard() {
   document.addEventListener("keyup", onKeyUp);
 }
 
-function createGUI(model) {
-  const gui = new GUI();
-
-  const folder = gui.addFolder("Model");
-  folder.close();
-
-  const rotationFolder = folder.addFolder("Rotation");
-  rotationFolder.add(model.rotation, "x", 0, Math.PI * 2);
-  rotationFolder.add(model.rotation, "y", 0, Math.PI * 2);
-  rotationFolder.add(model.rotation, "z", 0, Math.PI * 2);
-  rotationFolder.open();
-
-  const positionFolder = folder.addFolder("Position");
-  positionFolder.add(model.position, "x", -10, 10, 2);
-  positionFolder.add(model.position, "y", -10, 10, 2);
-  positionFolder.add(model.position, "z", -10, 10, 2);
-  positionFolder.open();
-
-  const scaleFolder = folder.addFolder("Scale");
-  scaleFolder.add(model.scale, "x", -5, 5);
-  scaleFolder.add(model.scale, "y", -5, 5);
-  scaleFolder.add(model.scale, "z", -5, 5);
-  scaleFolder.open();
-
-  folder.add(model, "visible");
-
-  // const cameraFolder = gui.addFolder("Camera");
-  // cameraFolder.open();
-
-  // const cameraPositionFolder = cameraFolder.addFolder("Position");
-  // cameraPositionFolder.add(camera.position, "x", 0, 10);
-  // cameraPositionFolder.add(camera.position, "y", 0, 10);
-  // cameraPositionFolder.add(camera.position, "z", 0, 10);
-  // cameraPositionFolder.open();
-
-  // const cameraRotationFolder = cameraFolder.addFolder("Rotation");
-  // cameraRotationFolder.add(camera.rotation, "x", 0, 10);
-  // cameraRotationFolder.add(camera.rotation, "y", 0, 10);
-  // cameraRotationFolder.add(camera.rotation, "z", 0, 10);
-  // cameraRotationFolder.open();
-}
-
+const cannonDebugger = new CannonDebugger(scene, world);
 const clock = new THREE.Clock();
+const timeFrame = 1 / 60;
 // ANIMATION
 function animate() {
   requestAnimationFrame(animate);
 
+  const deltaTime = clock.getDelta();
+
+  // update postion character when keys pressed
   if (characterControl) {
-    characterControl.update(clock.getDelta(), keysPressed);
+    characterControl.update(deltaTime, keysPressed);
   }
 
+  // START WORLD PHYSIC
+  meshModels.forEach((value, key) => {
+    value.position.copy(physicModels.get(key).position);
+    value.quaternion.copy(physicModels.get(key).quaternion);
+  });
+
+  world.step(timeFrame);
+  cannonDebugger.update();
+
+  // UPDATE ANIMATON
   control.update();
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.render(scene, camera);
