@@ -13,9 +13,9 @@ export function createGUI(model) {
   rotationFolder.open();
 
   const positionFolder = folder.addFolder("Position");
-  positionFolder.add(model.position, "x", -10, 10, 2);
-  positionFolder.add(model.position, "y", -10, 10, 2);
-  positionFolder.add(model.position, "z", -10, 10, 2);
+  positionFolder.add(model.position, "x", -10, 10, 0.5);
+  positionFolder.add(model.position, "y", -10, 10, 0.5);
+  positionFolder.add(model.position, "z", -10, 10, 0.5);
   positionFolder.open();
 
   const scaleFolder = folder.addFolder("Scale");

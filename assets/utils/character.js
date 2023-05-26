@@ -18,13 +18,16 @@ export default class CharacterControl {
     this.toggleRun = false;
 
     this.walkDirection = new THREE.Vector3();
+    this.jumpVelocity = new THREE.Vector3();
     this.rotateAngle = new THREE.Vector3(0, 1, 0);
     this.rotateQuarternion = new THREE.Quaternion();
     this.cameraTarget = new THREE.Vector3();
 
     this.fadeDuration = 0.2;
-    this.runVelocity = 5;
+    this.runVelocity = 10;
     this.walkVelocity = 2;
+    this.playerIsOnGround = true;
+    this.gravity = -30;
 
     this.animations.forEach((value, key) => {
       if (key === currentAction) {
@@ -37,10 +40,25 @@ export default class CharacterControl {
     this.toggleRun = isRun;
   }
 
+  jumpAction() {
+    if (this.playerIsOnGround) {
+      this.jumpVelocity.y = 10.0;
+      this.playerIsOnGround = false;
+    }
+  }
+
   update(delta, keysPressed) {
     const isDirectionPressed = ["w", "s", "d", "a"].some(
       (key) => keysPressed[key] === true
     );
+
+    if (this.playerIsOnGround) {
+      this.jumpVelocity.y = delta * this.gravity;
+    } else {
+      this.jumpVelocity.y += delta * this.gravity;
+    }
+
+    // this.model.position.addScaledVector(this.jumpVelocity, delta);
 
     let action = "Idle";
     if (isDirectionPressed) {
@@ -77,8 +95,8 @@ export default class CharacterControl {
         angleYCameraDirection + directionOffset
       );
 
-      // this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15); // For mesh THREEJS
-      this.model.quaternion.copy(this.rotateQuarternion, 0.1); // For body CANNONES
+      this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15); // For mesh THREEJS
+      // this.model.quaternion.copy(this.rotateQuarternion, 0.1); // For body CANNONES
 
       // calculate direction
       this.camera.getWorldDirection(this.walkDirection);
@@ -103,7 +121,6 @@ export default class CharacterControl {
     // move camera
     this.camera.position.x += moveX;
     this.camera.position.z += moveZ;
-    // this.camera.position.y = 0.5;
 
     // update camera target
     this.cameraTarget.x = this.model.position.x;
