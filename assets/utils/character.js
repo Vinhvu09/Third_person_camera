@@ -52,11 +52,11 @@ export default class CharacterControl {
       (key) => keysPressed[key] === true
     );
 
-    if (this.playerIsOnGround) {
-      this.jumpVelocity.y = delta * this.gravity;
-    } else {
-      this.jumpVelocity.y += delta * this.gravity;
-    }
+    // if (this.playerIsOnGround) {
+    //   this.jumpVelocity.y = delta * this.gravity;
+    // } else {
+    //   this.jumpVelocity.y += delta * this.gravity;
+    // }
 
     // this.model.position.addScaledVector(this.jumpVelocity, delta);
 

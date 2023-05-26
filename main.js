@@ -39,10 +39,12 @@ control.update();
 // DECLARE
 const clock = new THREE.Clock();
 const gltfLoader = new GLTFLoader();
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
-const actionModels = new Map();
-const collisionModel = new Map();
+let tempVector2 = new THREE.Vector3();
+let tempBox = new THREE.Box3();
+let tempMat = new THREE.Matrix4();
+let tempSegment = new THREE.Line3();
+
 let characterControl;
 const keysPressed = {};
 let collider;
@@ -172,37 +174,6 @@ gltfLoader.load("./assets/data/5v5_game_map.glb", (gltf) => {
   }
 });
 
-// const plane = new THREE.Mesh(
-//   new THREE.PlaneGeometry(50, 50),
-//   new THREE.MeshBasicMaterial({ color: "gray" })
-// );
-// plane.rotation.set(-Math.PI / 2, 0, 0);
-// scene.add(plane);
-
-// function randomCycle(x, z, key) {
-//   const cycle = new THREE.Mesh(
-//     new THREE.TorusGeometry(0.5, 0.01, 2, 100),
-//     new THREE.MeshBasicMaterial({ color: "#FFFFFF" })
-//   );
-//   cycle.position.set(x, 0.01, z);
-//   cycle.rotation.set(Math.PI / 2, 0, 0);
-//   scene.add(cycle);
-//   collisionModel.set(key, cycle);
-// }
-
-// for (let index = 0; index < 20; index++) {
-//   let sub = 1;
-//   if (index > 10) {
-//     sub = -1;
-//   }
-
-//   randomCycle(
-//     (sub * Math.random() * 45) / 2,
-//     (sub * Math.random() * 45) / 2,
-//     `cycle_${index}`
-//   );
-// }
-
 // FUNCTION HANDLER
 function initActionKeyboard() {
   const onKeyDown = function (event) {
@@ -237,7 +208,74 @@ function animate() {
   const deltaTime = clock.getDelta();
 
   // update postion character when keys pressed
-  if (characterControl) {
+  if (characterControl && collider) {
+    tempBox.makeEmpty();
+    tempMat.copy(collider.matrixWorld).invert();
+    tempSegment.copy(
+      new THREE.Line3(new THREE.Vector3(), new THREE.Vector3(0, -1.0, 0.0))
+    );
+
+    tempSegment.start
+      .applyMatrix4(characterControl.model.matrixWorld)
+      .applyMatrix4(tempMat);
+    tempSegment.end
+      .applyMatrix4(characterControl.model.matrixWorld)
+      .applyMatrix4(tempMat);
+
+    tempBox.expandByPoint(tempSegment.start);
+    tempBox.expandByPoint(tempSegment.end);
+
+    tempBox.min.addScalar(-1);
+    tempBox.max.addScalar(1);
+
+    collider.geometry.boundsTree.shapecast({
+      intersectsBounds: (box) => box.intersectsBox(tempBox),
+
+      intersectsTriangle: (tri) => {
+        // check if the triangle is intersecting the capsule and adjust the
+        // capsule position if it is.
+        const triPoint = characterControl.walkDirection;
+        const capsulePoint = tempVector2;
+
+        const distance = tri.closestPointToSegment(
+          tempSegment,
+          triPoint,
+          capsulePoint
+        );
+        if (distance < 1) {
+          const depth = 1 - distance;
+          const direction = capsulePoint.sub(triPoint).normalize();
+
+          tempSegment.start.addScaledVector(direction, depth);
+          tempSegment.end.addScaledVector(direction, depth);
+        }
+      },
+    });
+
+    const newPosition = characterControl.walkDirection;
+    newPosition.copy(tempSegment.start).applyMatrix4(collider.matrixWorld);
+
+    const deltaVector = tempVector2;
+    deltaVector.subVectors(newPosition, characterControl.model.position);
+    // if the player was primarily adjusted vertically we assume it's on something we should consider ground
+    // characterControl.playerIsOnGround =
+    //   deltaVector.y >
+    //   Math.abs(deltaTime * characterControl.jumpVelocity.y * 0.25);
+
+    const offset = Math.max(0.0, deltaVector.length() - 1e-5);
+    deltaVector.normalize().multiplyScalar(offset);
+    characterControl.model.position.add(deltaVector.position);
+
+    // if (!characterControl.playerIsOnGround) {
+    //   deltaVector.normalize();
+    //   playerVelocity.addScaledVector(
+    //     deltaVector,
+    //     -deltaVector.dot(playerVelocity)
+    //   );
+    // } else {
+    //   playerVelocity.set(0, 0, 0);
+    // }
+
     characterControl.update(deltaTime, keysPressed);
   }
 
