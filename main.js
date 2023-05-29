@@ -7,9 +7,10 @@ import CharacterControl from "./assets/utils/character";
 import CannonDebugger from "cannon-es-debugger";
 import { animateScale } from "./assets/utils/animation";
 import { createGUI } from "./assets/utils/gui";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+
 import {
   MeshBVH,
-  acceleratedRaycast,
   StaticGeometryGenerator,
   MeshBVHVisualizer,
 } from "three-mesh-bvh";
@@ -18,7 +19,7 @@ import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js"
 // SETUP
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
-  75,
+  65,
   window.innerWidth / window.innerHeight,
   0.1,
   1000
@@ -40,25 +41,19 @@ control.update();
 const clock = new THREE.Clock();
 const gltfLoader = new GLTFLoader();
 
+let playerVelocity = new THREE.Vector3();
+let upVector = new THREE.Vector3(0, 1, 0);
+let tempVector = new THREE.Vector3();
 let tempVector2 = new THREE.Vector3();
 let tempBox = new THREE.Box3();
 let tempMat = new THREE.Matrix4();
 let tempSegment = new THREE.Line3();
+let playerIsOnGround = false;
+let player;
 
 let characterControl;
 const keysPressed = {};
 let collider;
-
-// View angle
-if (false) {
-  control.maxPolarAngle = Math.PI;
-  control.minDistance = 1e-4;
-  control.maxDistance = 1e-4;
-} else {
-  // control.maxPolarAngle = Math.PI / 2 - 0.05;
-  // control.minDistance = 1;
-  // control.maxDistance = 10;
-}
 
 // RUN HANDLER
 initActionKeyboard();
@@ -67,15 +62,25 @@ initActionKeyboard();
 const light = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(light);
 
+let chr;
 // RENDER MODELS
 // Render character
 gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   const model = gltf.scene;
+  chr = model;
+  // character
+  player = new THREE.Mesh(
+    new RoundedBoxGeometry(1.0, 2.0, 1.0, 10, 0.5),
+    new THREE.MeshStandardMaterial({ transparent: true, opacity: 0 })
+  );
+  player.geometry.translate(0, 0.5, 0);
   model.traverse((obj) => {
     if (obj.isMesh) obj.castShadow = true;
   });
-  model.scale.set(0.7, 0.7, 0.7);
-  scene.add(model);
+  chr.position.y = -0.5;
+  player.add(chr);
+  scene.add(player);
+  player.position.y = 2;
 
   const mixer = new THREE.AnimationMixer(model);
   const animations = new Map();
@@ -96,14 +101,12 @@ gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
 });
 
 // Render map
-gltfLoader.load("./assets/data/5v5_game_map.glb", (gltf) => {
+gltfLoader.load("./assets/data/damned_soul_purgatory.glb", (gltf) => {
   const model = gltf.scene;
-  model.scale.setScalar(0.002);
-
-  const box = new THREE.Box3();
-  box.setFromObject(model);
-  box.getCenter(model.position).negate();
-  model.position.y = 0;
+  // const box = new THREE.Box3();
+  // box.setFromObject(model);
+  // box.getCenter(model.position).negate();
+  // model.position.y = 0;
   model.updateMatrixWorld(true);
   scene.add(model);
 
@@ -179,7 +182,10 @@ function initActionKeyboard() {
   const onKeyDown = function (event) {
     characterControl?.switchRunToggle(event.shiftKey);
     if (event.code === "Space") {
-      characterControl?.jumpAction();
+      if (playerIsOnGround) {
+        playerVelocity.y = 3;
+        playerIsOnGround = false;
+      }
     }
     keysPressed[event.key.toLowerCase()] = true;
   };
@@ -201,40 +207,72 @@ function initActionKeyboard() {
   document.addEventListener("keyup", onKeyUp);
 }
 
+const segment = new THREE.Line3(
+  new THREE.Vector3(),
+  new THREE.Vector3(0, 1, 0)
+);
+
+const radius = 0.5;
+const gravity = -10;
+const playerSpeed = 10;
+
 // ANIMATION
 function animate() {
   requestAnimationFrame(animate);
 
   const deltaTime = clock.getDelta();
 
-  // update postion character when keys pressed
-  if (characterControl && collider) {
+  // // update postion character when keys pressed
+  if (player && collider) {
+    if (playerIsOnGround) {
+      playerVelocity.y = deltaTime * gravity;
+    } else {
+      playerVelocity.y += deltaTime * gravity;
+    }
+    player.position.addScaledVector(playerVelocity, deltaTime);
+
+    // move the player
+    const angle = control.getAzimuthalAngle();
+    if (keysPressed["w"]) {
+      tempVector.set(0, 0, -1).applyAxisAngle(upVector, angle);
+      player.position.addScaledVector(tempVector, playerSpeed * deltaTime);
+    }
+
+    if (keysPressed["s"]) {
+      tempVector.set(0, 0, 1).applyAxisAngle(upVector, angle);
+      player.position.addScaledVector(tempVector, playerSpeed * deltaTime);
+    }
+
+    if (keysPressed["a"]) {
+      tempVector.set(-1, 0, 0).applyAxisAngle(upVector, angle);
+      player.position.addScaledVector(tempVector, playerSpeed * deltaTime);
+    }
+
+    if (keysPressed["d"]) {
+      tempVector.set(1, 0, 0).applyAxisAngle(upVector, angle);
+      player.position.addScaledVector(tempVector, playerSpeed * deltaTime);
+    }
+
+    player.updateMatrixWorld();
     tempBox.makeEmpty();
     tempMat.copy(collider.matrixWorld).invert();
-    tempSegment.copy(
-      new THREE.Line3(new THREE.Vector3(), new THREE.Vector3(0, -1.0, 0.0))
-    );
+    tempSegment.copy(segment);
 
-    tempSegment.start
-      .applyMatrix4(characterControl.model.matrixWorld)
-      .applyMatrix4(tempMat);
-    tempSegment.end
-      .applyMatrix4(characterControl.model.matrixWorld)
-      .applyMatrix4(tempMat);
+    tempSegment.start.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
+    tempSegment.end.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
 
     tempBox.expandByPoint(tempSegment.start);
     tempBox.expandByPoint(tempSegment.end);
 
-    tempBox.min.addScalar(-1);
-    tempBox.max.addScalar(1);
+    tempBox.min.addScalar(-radius);
+    tempBox.max.addScalar(radius);
 
     collider.geometry.boundsTree.shapecast({
       intersectsBounds: (box) => box.intersectsBox(tempBox),
-
       intersectsTriangle: (tri) => {
         // check if the triangle is intersecting the capsule and adjust the
         // capsule position if it is.
-        const triPoint = characterControl.walkDirection;
+        const triPoint = tempVector;
         const capsulePoint = tempVector2;
 
         const distance = tri.closestPointToSegment(
@@ -242,8 +280,9 @@ function animate() {
           triPoint,
           capsulePoint
         );
-        if (distance < 1) {
-          const depth = 1 - distance;
+
+        if (distance < radius) {
+          const depth = radius - distance;
           const direction = capsulePoint.sub(triPoint).normalize();
 
           tempSegment.start.addScaledVector(direction, depth);
@@ -252,31 +291,54 @@ function animate() {
       },
     });
 
-    const newPosition = characterControl.walkDirection;
+    const newPosition = tempVector;
     newPosition.copy(tempSegment.start).applyMatrix4(collider.matrixWorld);
 
     const deltaVector = tempVector2;
-    deltaVector.subVectors(newPosition, characterControl.model.position);
-    // if the player was primarily adjusted vertically we assume it's on something we should consider ground
-    // characterControl.playerIsOnGround =
-    //   deltaVector.y >
-    //   Math.abs(deltaTime * characterControl.jumpVelocity.y * 0.25);
+    deltaVector.subVectors(newPosition, player.position);
+    playerIsOnGround =
+      deltaVector.y > Math.abs(deltaTime * playerVelocity.y * 0.25);
 
     const offset = Math.max(0.0, deltaVector.length() - 1e-5);
     deltaVector.normalize().multiplyScalar(offset);
-    characterControl.model.position.add(deltaVector.position);
+    player.position.add(deltaVector);
 
-    // if (!characterControl.playerIsOnGround) {
-    //   deltaVector.normalize();
-    //   playerVelocity.addScaledVector(
-    //     deltaVector,
-    //     -deltaVector.dot(playerVelocity)
-    //   );
-    // } else {
-    //   playerVelocity.set(0, 0, 0);
-    // }
+    if (!playerIsOnGround) {
+      deltaVector.normalize();
+      playerVelocity.addScaledVector(
+        deltaVector,
+        -deltaVector.dot(playerVelocity)
+      );
+    } else {
+      playerVelocity.set(0, 0, 0);
+    }
 
-    characterControl.update(deltaTime, keysPressed);
+    // characterControl.update(deltaTime, keysPressed);
+
+    // if the player has fallen too far below the level reset their position to the start
+    if (player.position.y < -25) {
+      playerVelocity.set(0, 0, 0);
+      player.position.set(0, 0, 0);
+      camera.position.sub(control.target);
+      control.target.copy(player.position);
+      camera.position.add(player.position);
+      control.update();
+    }
+
+    // adjust the camera
+    camera.position.sub(control.target);
+    control.target.copy(player.position);
+    camera.position.add(player.position);
+  }
+
+  if (false) {
+    control.maxPolarAngle = Math.PI;
+    control.minDistance = 1e-4;
+    control.maxDistance = 1e-4;
+  } else {
+    control.maxPolarAngle = Math.PI / 2;
+    control.minDistance = 1;
+    control.maxDistance = 20;
   }
 
   // UPDATE ANIMATON
