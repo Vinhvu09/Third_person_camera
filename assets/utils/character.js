@@ -95,8 +95,7 @@ export default class CharacterControl {
         angleYCameraDirection + directionOffset
       );
 
-      this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15); // For mesh THREEJS
-      // this.model.quaternion.copy(this.rotateQuarternion, 0.1); // For body CANNONES
+      this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
 
       // calculate direction
       this.camera.getWorldDirection(this.walkDirection);
@@ -113,7 +112,7 @@ export default class CharacterControl {
       const moveZ = this.walkDirection.z * velocity * delta;
       this.model.position.x += moveX;
       this.model.position.z += moveZ;
-      this.updateCameraTarget(moveX, moveZ);
+      // this.updateCameraTarget(moveX, moveZ);
     }
   }
 

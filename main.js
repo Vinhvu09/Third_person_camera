@@ -62,25 +62,13 @@ initActionKeyboard();
 const light = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(light);
 
-let chr;
 // RENDER MODELS
 // Render character
 gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   const model = gltf.scene;
-  chr = model;
-  // character
-  player = new THREE.Mesh(
-    new RoundedBoxGeometry(1.0, 2.0, 1.0, 10, 0.5),
-    new THREE.MeshStandardMaterial({ transparent: true, opacity: 0 })
-  );
-  player.geometry.translate(0, 0.5, 0);
-  model.traverse((obj) => {
-    if (obj.isMesh) obj.castShadow = true;
-  });
-  chr.position.y = -0.5;
-  player.add(chr);
+  player = model;
+  player.add(new THREE.AxesHelper(2));
   scene.add(player);
-  player.position.y = 2;
 
   const mixer = new THREE.AnimationMixer(model);
   const animations = new Map();
@@ -183,7 +171,7 @@ function initActionKeyboard() {
     characterControl?.switchRunToggle(event.shiftKey);
     if (event.code === "Space") {
       if (playerIsOnGround) {
-        playerVelocity.y = 3;
+        playerVelocity.y = 10;
         playerIsOnGround = false;
       }
     }
@@ -213,7 +201,7 @@ const segment = new THREE.Line3(
 );
 
 const radius = 0.5;
-const gravity = -10;
+const gravity = -30;
 const playerSpeed = 10;
 
 // ANIMATION
@@ -296,12 +284,21 @@ function animate() {
 
     const deltaVector = tempVector2;
     deltaVector.subVectors(newPosition, player.position);
+
     playerIsOnGround =
       deltaVector.y > Math.abs(deltaTime * playerVelocity.y * 0.25);
 
     const offset = Math.max(0.0, deltaVector.length() - 1e-5);
     deltaVector.normalize().multiplyScalar(offset);
     player.position.add(deltaVector);
+
+    // Ensure player is always on the ground
+    if (playerIsOnGround) {
+      player.position.y = Math.max(
+        player.position.y,
+        collider.position.y + radius
+      );
+    }
 
     if (!playerIsOnGround) {
       deltaVector.normalize();
@@ -313,16 +310,15 @@ function animate() {
       playerVelocity.set(0, 0, 0);
     }
 
-    // characterControl.update(deltaTime, keysPressed);
+    characterControl.update(deltaTime, keysPressed);
 
     // if the player has fallen too far below the level reset their position to the start
-    if (player.position.y < -25) {
+    if (player.position.y < -10) {
       playerVelocity.set(0, 0, 0);
-      player.position.set(0, 0, 0);
+      player.position.set(radius, radius, 0);
       camera.position.sub(control.target);
       control.target.copy(player.position);
       camera.position.add(player.position);
-      control.update();
     }
 
     // adjust the camera
