@@ -40,25 +40,10 @@ export default class CharacterControl {
     this.toggleRun = isRun;
   }
 
-  jumpAction() {
-    if (this.playerIsOnGround) {
-      this.jumpVelocity.y = 10.0;
-      this.playerIsOnGround = false;
-    }
-  }
-
   update(delta, keysPressed) {
     const isDirectionPressed = ["w", "s", "d", "a"].some(
       (key) => keysPressed[key] === true
     );
-
-    // if (this.playerIsOnGround) {
-    //   this.jumpVelocity.y = delta * this.gravity;
-    // } else {
-    //   this.jumpVelocity.y += delta * this.gravity;
-    // }
-
-    // this.model.position.addScaledVector(this.jumpVelocity, delta);
 
     let action = "Idle";
     if (isDirectionPressed) {
@@ -97,21 +82,22 @@ export default class CharacterControl {
 
       this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
 
+      // Old code
       // calculate direction
-      this.camera.getWorldDirection(this.walkDirection);
-      this.walkDirection.y = 0;
-      this.walkDirection.normalize();
-      this.walkDirection.applyAxisAngle(this.rotateAngle, directionOffset);
+      // this.camera.getWorldDirection(this.walkDirection);
+      // this.walkDirection.y = 0;
+      // this.walkDirection.normalize();
+      // this.walkDirection.applyAxisAngle(this.rotateAngle, directionOffset);
 
-      // run/walk velocity
-      const velocity =
-        this.currentAction == "Run" ? this.runVelocity : this.walkVelocity;
+      // // run/walk velocity
+      // const velocity =
+      //   this.currentAction == "Run" ? this.runVelocity : this.walkVelocity;
 
-      // move model & camera
-      const moveX = this.walkDirection.x * velocity * delta;
-      const moveZ = this.walkDirection.z * velocity * delta;
-      this.model.position.x += moveX;
-      this.model.position.z += moveZ;
+      // // move model & camera
+      // const moveX = this.walkDirection.x * velocity * delta;
+      // const moveZ = this.walkDirection.z * velocity * delta;
+      // this.model.position.x += moveX;
+      // this.model.position.z += moveZ;
       // this.updateCameraTarget(moveX, moveZ);
     }
   }

@@ -55,12 +55,37 @@ let characterControl;
 const keysPressed = {};
 let collider;
 
+const segment = new THREE.Line3(
+  new THREE.Vector3(),
+  new THREE.Vector3(0, 1, 0)
+);
+
+const radius = 0.45;
+const gravity = -50;
+const playerSpeed = 10;
+
+const modelsMap = new Map();
+
 // RUN HANDLER
 initActionKeyboard();
 
 // LIGHT
-const light = new THREE.AmbientLight(0xffffff, 0.6);
+const light = new THREE.AmbientLight(0xffffff, 0.3);
 scene.add(light);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Color, Intensity
+directionalLight.position.set(1, 1, 1); // Direction
+scene.add(directionalLight);
+
+const pointLight = new THREE.PointLight(0xffffff, 1); // Color, Intensity
+pointLight.position.set(0, 3, 0); // Position
+scene.add(pointLight);
+
+// const spotLight = new THREE.SpotLight(0xffffff, 1); // Color, Intensity
+// spotLight.position.set(30, 2, 0); // Position
+// spotLight.target.position.set(0, 0, 0); // Target position
+// scene.add(spotLight);
+// scene.add(spotLight.target);
 
 // RENDER MODELS
 // Render character
@@ -68,6 +93,7 @@ gltfLoader.load("./assets/data/Soldier.glb", (gltf) => {
   const model = gltf.scene;
   player = model;
   player.add(new THREE.AxesHelper(2));
+
   scene.add(player);
 
   const mixer = new THREE.AnimationMixer(model);
@@ -94,8 +120,8 @@ gltfLoader.load("./assets/data/damned_soul_purgatory.glb", (gltf) => {
   // const box = new THREE.Box3();
   // box.setFromObject(model);
   // box.getCenter(model.position).negate();
-  // model.position.y = 0;
   model.updateMatrixWorld(true);
+  model.position.y = radius;
   scene.add(model);
 
   const toMerge = {};
@@ -160,9 +186,86 @@ gltfLoader.load("./assets/data/damned_soul_purgatory.glb", (gltf) => {
     const visualizer = new MeshBVHVisualizer(collider);
 
     // scene.add(visualizer);
-    scene.add(collider);
+    // scene.add(collider);
     // scene.add(environment);
   }
+});
+
+const statueNames = [
+  // "bantuong.glb",
+  // "face.glb",
+  // "Lion.glb",
+  // "Rong.glb",
+  "SuTu.glb",
+].forEach((name, idx) => {
+  gltfLoader.load(`./assets/data/${name}`, (gltf) => {
+    const model = gltf.scene;
+    model.scale.set(10, 10, 10);
+    model.position.y = radius;
+    model.position.x = 40;
+    model.rotation.set(0, Math.PI / 2, 0);
+    model.updateMatrixWorld(true);
+    scene.add(model);
+
+    // const geometryTru = new THREE.CylinderGeometry(7, 7, 10, 32);
+    // const materialTru = new THREE.MeshBasicMaterial({
+    //   color: "#FFC125",
+    //   opacity: 0.5,
+    //   transparent: true,
+    //   side: THREE.DoubleSide,
+    // });
+    // const cylinder = new THREE.Mesh(geometryTru, materialTru);
+
+    // model.add(cylinder);
+
+    // const geometry = new THREE.TorusGeometry(1, 0.1, 16, 100);
+    // const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    // const torus = new THREE.Mesh(geometry, material);
+    // torus.rotation.set(Math.PI / 2, 0, 0);
+    // torus.position.set(0, 0, -0.3);
+    // torus.scale.set(0.1, 0.1, 0.1);
+    // scene.add(torus);
+
+    // model.add(torus);
+
+    const mixer = new THREE.AnimationMixer(model);
+    mixer.clipAction(gltf.animations[0]).play();
+    modelsMap.set(name, mixer);
+
+    const environment = new THREE.Group();
+    const meshes = [];
+    model.traverse(function (mesh) {
+      if (mesh.isMesh) {
+        const geom = mesh.geometry.clone();
+        geom.applyMatrix4(mesh.matrixWorld);
+        meshes.push(geom);
+      }
+    });
+
+    const newGeom = BufferGeometryUtils.mergeGeometries(meshes);
+    const newMesh = new THREE.Mesh(
+      newGeom,
+      new THREE.MeshStandardMaterial({
+        color: 0xffff,
+        shadowSide: 2,
+      })
+    );
+    environment.add(newMesh);
+
+    const staticGenerator = new StaticGeometryGenerator(environment);
+
+    const mergedGeometry = staticGenerator.generate();
+    mergedGeometry.boundsTree = new MeshBVH(mergedGeometry, {
+      lazyGeneration: false,
+    });
+
+    collider = new THREE.Mesh(mergedGeometry);
+    collider.material.wireframe = true;
+    collider.material.opacity = 0.5;
+    collider.material.transparent = true;
+
+    scene.add(collider);
+  });
 });
 
 // FUNCTION HANDLER
@@ -195,20 +298,13 @@ function initActionKeyboard() {
   document.addEventListener("keyup", onKeyUp);
 }
 
-const segment = new THREE.Line3(
-  new THREE.Vector3(),
-  new THREE.Vector3(0, 1, 0)
-);
-
-const radius = 0.5;
-const gravity = -30;
-const playerSpeed = 10;
-
 // ANIMATION
 function animate() {
   requestAnimationFrame(animate);
 
   const deltaTime = clock.getDelta();
+
+  modelsMap.forEach((m) => m.update(deltaTime));
 
   // // update postion character when keys pressed
   if (player && collider) {
@@ -217,12 +313,22 @@ function animate() {
     } else {
       playerVelocity.y += deltaTime * gravity;
     }
+
     player.position.addScaledVector(playerVelocity, deltaTime);
 
     // move the player
     const angle = control.getAzimuthalAngle();
     if (keysPressed["w"]) {
+      // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
       tempVector.set(0, 0, -1).applyAxisAngle(upVector, angle);
+
+      // Example addScaledVector
+      // const v1 = new THREE.Vector3(1, 2, 3);
+      // const v2 = new THREE.Vector3(4, 5, 6);
+      // const s = 2;
+
+      // v2.addScaledVector(v1, s);
+      // v2 sẽ trở thành (6, 9, 12)
       player.position.addScaledVector(tempVector, playerSpeed * deltaTime);
     }
 
@@ -242,24 +348,37 @@ function animate() {
     }
 
     player.updateMatrixWorld();
+
+    // Create box into radius and matrix player(include: position, scale, rotation)
+    // Box preresent for player to check collision with geometries map
     tempBox.makeEmpty();
+
     tempMat.copy(collider.matrixWorld).invert();
     tempSegment.copy(segment);
-
     tempSegment.start.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
     tempSegment.end.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
 
     tempBox.expandByPoint(tempSegment.start);
     tempBox.expandByPoint(tempSegment.end);
-
     tempBox.min.addScalar(-radius);
     tempBox.max.addScalar(radius);
+
+    // Show tempbox to scene
+    // const boxHelper = new THREE.Box3Helper(tempBox, 0xffff00);
+    // scene.add(boxHelper);
+
+    // Show tempSegment to scene
+    // const geometry = new THREE.BufferGeometry().setFromPoints([
+    //   tempSegment.start,
+    //   tempSegment.end,
+    // ]);
+    // const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    // const lineObject = new THREE.Line(geometry, material);
+    // scene.add(lineObject);
 
     collider.geometry.boundsTree.shapecast({
       intersectsBounds: (box) => box.intersectsBox(tempBox),
       intersectsTriangle: (tri) => {
-        // check if the triangle is intersecting the capsule and adjust the
-        // capsule position if it is.
         const triPoint = tempVector;
         const capsulePoint = tempVector2;
 
@@ -272,7 +391,6 @@ function animate() {
         if (distance < radius) {
           const depth = radius - distance;
           const direction = capsulePoint.sub(triPoint).normalize();
-
           tempSegment.start.addScaledVector(direction, depth);
           tempSegment.end.addScaledVector(direction, depth);
         }
@@ -284,7 +402,6 @@ function animate() {
 
     const deltaVector = tempVector2;
     deltaVector.subVectors(newPosition, player.position);
-
     playerIsOnGround =
       deltaVector.y > Math.abs(deltaTime * playerVelocity.y * 0.25);
 
@@ -292,33 +409,22 @@ function animate() {
     deltaVector.normalize().multiplyScalar(offset);
     player.position.add(deltaVector);
 
-    // Ensure player is always on the ground
     if (playerIsOnGround) {
-      player.position.y = Math.max(
-        player.position.y,
-        collider.position.y + radius
-      );
-    }
-
-    if (!playerIsOnGround) {
+      playerVelocity.set(0, 0, 0);
+    } else {
       deltaVector.normalize();
       playerVelocity.addScaledVector(
         deltaVector,
         -deltaVector.dot(playerVelocity)
       );
-    } else {
-      playerVelocity.set(0, 0, 0);
     }
 
     characterControl.update(deltaTime, keysPressed);
 
     // if the player has fallen too far below the level reset their position to the start
-    if (player.position.y < -10) {
+    if (player.position.y < -30) {
       playerVelocity.set(0, 0, 0);
-      player.position.set(radius, radius, 0);
-      camera.position.sub(control.target);
-      control.target.copy(player.position);
-      camera.position.add(player.position);
+      player.position.set(1, radius, 0);
     }
 
     // adjust the camera
