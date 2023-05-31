@@ -27,6 +27,7 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.y = 2;
 camera.position.z = 5;
 camera.position.x = 0;
+
 const renderer = new THREE.WebGL1Renderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -53,7 +54,6 @@ let player;
 
 let characterControl;
 const keysPressed = {};
-let collider;
 
 const segment = new THREE.Line3(
   new THREE.Vector3(),
@@ -64,7 +64,8 @@ const radius = 0.45;
 const gravity = -50;
 const playerSpeed = 10;
 
-const modelsMap = new Map();
+const colliderMap = new Map();
+const animationsMap = new Map();
 
 // RUN HANDLER
 initActionKeyboard();
@@ -178,15 +179,17 @@ gltfLoader.load("./assets/data/damned_soul_purgatory.glb", (gltf) => {
       lazyGeneration: false,
     });
 
-    collider = new THREE.Mesh(mergedGeometry);
+    const collider = new THREE.Mesh(mergedGeometry);
     collider.material.wireframe = true;
     collider.material.opacity = 0.5;
     collider.material.transparent = true;
 
+    colliderMap.set("map", collider);
+
     const visualizer = new MeshBVHVisualizer(collider);
 
     // scene.add(visualizer);
-    // scene.add(collider);
+    scene.add(collider);
     // scene.add(environment);
   }
 });
@@ -201,11 +204,8 @@ const statueNames = [
   gltfLoader.load(`./assets/data/${name}`, (gltf) => {
     const model = gltf.scene;
     model.scale.set(10, 10, 10);
+    model.position.x = 20;
     model.position.y = radius;
-    model.position.x = 40;
-    model.rotation.set(0, Math.PI / 2, 0);
-    model.updateMatrixWorld(true);
-    scene.add(model);
 
     // const geometryTru = new THREE.CylinderGeometry(7, 7, 10, 32);
     // const materialTru = new THREE.MeshBasicMaterial({
@@ -218,53 +218,93 @@ const statueNames = [
 
     // model.add(cylinder);
 
-    // const geometry = new THREE.TorusGeometry(1, 0.1, 16, 100);
-    // const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    // const torus = new THREE.Mesh(geometry, material);
-    // torus.rotation.set(Math.PI / 2, 0, 0);
-    // torus.position.set(0, 0, -0.3);
-    // torus.scale.set(0.1, 0.1, 0.1);
-    // scene.add(torus);
+    // const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
+    // const boxMesh = new THREE.Mesh(boxGeometry);
+    // boxMesh.scale.set(0.15, 0.15, 0.15);
+    // model.add(boxMesh);
 
-    // model.add(torus);
+    const geometry = new THREE.TorusGeometry(1, 0.1, 16, 100);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.rotation.set(Math.PI / 2, 0, 0);
+    torus.position.set(10, radius, 0);
+    torus.scale.set(0.9, 0.9, 0.9);
+    scene.add(torus);
+
+    model.updateMatrixWorld(true);
+    scene.add(model);
 
     const mixer = new THREE.AnimationMixer(model);
     mixer.clipAction(gltf.animations[0]).play();
-    modelsMap.set(name, mixer);
+    animationsMap.set(name, mixer);
 
-    const environment = new THREE.Group();
-    const meshes = [];
-    model.traverse(function (mesh) {
-      if (mesh.isMesh) {
-        const geom = mesh.geometry.clone();
-        geom.applyMatrix4(mesh.matrixWorld);
-        meshes.push(geom);
+    const toMerge = {};
+    model.traverse((c) => {
+      if (c.isMesh) {
+        const hex = c.name + c.type;
+        toMerge[hex] = toMerge[hex] || [];
+        toMerge[hex].push(c);
       }
     });
 
-    const newGeom = BufferGeometryUtils.mergeGeometries(meshes);
-    const newMesh = new THREE.Mesh(
-      newGeom,
-      new THREE.MeshStandardMaterial({
-        color: 0xffff,
-        shadowSide: 2,
-      })
-    );
-    environment.add(newMesh);
+    const environment = new THREE.Group();
+    for (const hex in toMerge) {
+      const arr = toMerge[hex];
+      const visualGeometries = {};
+      arr.forEach((mesh) => {
+        if (mesh.isMesh) {
+          const key =
+            mesh.name.split("_")[2] +
+            Object.keys(mesh.geometry.attributes).length;
+          visualGeometries[key] = visualGeometries[key] || [];
+          const geom = mesh.geometry.clone();
+          geom.applyMatrix4(mesh.matrixWorld);
+          visualGeometries[key].push(geom);
+        }
+      });
 
-    const staticGenerator = new StaticGeometryGenerator(environment);
+      for (const key in visualGeometries) {
+        // Merges a set of geometries into a single instance. All geometries must have compatible attributes
+        try {
+          const newGeom = BufferGeometryUtils.mergeGeometries(
+            visualGeometries[key]
+          );
+          const newMesh = new THREE.Mesh(
+            newGeom,
+            new THREE.MeshStandardMaterial({
+              color: parseInt(hex),
+              shadowSide: 2,
+            })
+          );
 
-    const mergedGeometry = staticGenerator.generate();
-    mergedGeometry.boundsTree = new MeshBVH(mergedGeometry, {
-      lazyGeneration: false,
-    });
+          environment.add(newMesh);
+        } catch (error) {
+          console.log(key);
+        }
+      }
 
-    collider = new THREE.Mesh(mergedGeometry);
-    collider.material.wireframe = true;
-    collider.material.opacity = 0.5;
-    collider.material.transparent = true;
+      // A utility class for taking a set of SkinnedMeshes or morph target geometry and baking it into a single, static geometry that a BVH can be generated for.
+      const staticGenerator = new StaticGeometryGenerator(environment);
+      staticGenerator.attributes = ["position"];
 
-    scene.add(collider);
+      const mergedGeometry = staticGenerator.generate();
+      mergedGeometry.boundsTree = new MeshBVH(mergedGeometry, {
+        lazyGeneration: false,
+      });
+
+      const collider = new THREE.Mesh(mergedGeometry);
+      collider.material.wireframe = true;
+      collider.material.opacity = 0.5;
+      collider.material.transparent = true;
+
+      colliderMap.set("sutu", collider);
+
+      const visualizer = new MeshBVHVisualizer(collider);
+
+      // scene.add(visualizer);
+      scene.add(collider);
+      // scene.add(environment);
+    }
   });
 });
 
@@ -304,10 +344,10 @@ function animate() {
 
   const deltaTime = clock.getDelta();
 
-  modelsMap.forEach((m) => m.update(deltaTime));
+  // animationsMap.forEach((m) => m.update(deltaTime));
 
   // // update postion character when keys pressed
-  if (player && collider) {
+  if (player && colliderMap.has("map")) {
     if (playerIsOnGround) {
       playerVelocity.y = deltaTime * gravity;
     } else {
@@ -349,11 +389,12 @@ function animate() {
 
     player.updateMatrixWorld();
 
+    const matrixWorld = colliderMap.get("map").matrixWorld;
     // Create box into radius and matrix player(include: position, scale, rotation)
     // Box preresent for player to check collision with geometries map
     tempBox.makeEmpty();
 
-    tempMat.copy(collider.matrixWorld).invert();
+    tempMat.copy(matrixWorld).invert();
     tempSegment.copy(segment);
     tempSegment.start.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
     tempSegment.end.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
@@ -376,29 +417,33 @@ function animate() {
     // const lineObject = new THREE.Line(geometry, material);
     // scene.add(lineObject);
 
-    collider.geometry.boundsTree.shapecast({
-      intersectsBounds: (box) => box.intersectsBox(tempBox),
-      intersectsTriangle: (tri) => {
-        const triPoint = tempVector;
-        const capsulePoint = tempVector2;
+    colliderMap.forEach((collider) => {
+      collider.geometry.boundsTree.shapecast({
+        intersectsBounds: (box) => {
+          return box.intersectsBox(tempBox);
+        },
+        intersectsTriangle: (tri) => {
+          const triPoint = tempVector;
+          const capsulePoint = tempVector2;
 
-        const distance = tri.closestPointToSegment(
-          tempSegment,
-          triPoint,
-          capsulePoint
-        );
+          const distance = tri.closestPointToSegment(
+            tempSegment,
+            triPoint,
+            capsulePoint
+          );
 
-        if (distance < radius) {
-          const depth = radius - distance;
-          const direction = capsulePoint.sub(triPoint).normalize();
-          tempSegment.start.addScaledVector(direction, depth);
-          tempSegment.end.addScaledVector(direction, depth);
-        }
-      },
+          if (distance < radius) {
+            const depth = radius - distance;
+            const direction = capsulePoint.sub(triPoint).normalize();
+            tempSegment.start.addScaledVector(direction, depth);
+            tempSegment.end.addScaledVector(direction, depth);
+          }
+        },
+      });
     });
 
     const newPosition = tempVector;
-    newPosition.copy(tempSegment.start).applyMatrix4(collider.matrixWorld);
+    newPosition.copy(tempSegment.start).applyMatrix4(matrixWorld);
 
     const deltaVector = tempVector2;
     deltaVector.subVectors(newPosition, player.position);
@@ -440,7 +485,7 @@ function animate() {
   } else {
     control.maxPolarAngle = Math.PI / 2;
     control.minDistance = 1;
-    control.maxDistance = 20;
+    control.maxDistance = 50;
   }
 
   // UPDATE ANIMATON
