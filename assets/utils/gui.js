@@ -7,15 +7,15 @@ export function createGUI(model) {
   folder.close();
 
   const rotationFolder = folder.addFolder("Rotation");
-  rotationFolder.add(model.rotation, "x", 0, Math.PI * 2);
-  rotationFolder.add(model.rotation, "y", 0, Math.PI * 2);
-  rotationFolder.add(model.rotation, "z", 0, Math.PI * 2);
+  rotationFolder.add(model.rotation, "x", 0, Math.PI * 0.1);
+  rotationFolder.add(model.rotation, "y", 0, Math.PI * 0.1);
+  rotationFolder.add(model.rotation, "z", 0, Math.PI * 0.1);
   rotationFolder.open();
 
   const positionFolder = folder.addFolder("Position");
-  positionFolder.add(model.position, "x", -10, 10, 0.5);
-  positionFolder.add(model.position, "y", -10, 10, 0.5);
-  positionFolder.add(model.position, "z", -10, 10, 0.5);
+  positionFolder.add(model.position, "x", -10, 100, 0.1);
+  positionFolder.add(model.position, "y", -10, 100, 0.1);
+  positionFolder.add(model.position, "z", -10, 100, 0.1);
   positionFolder.open();
 
   const scaleFolder = folder.addFolder("Scale");

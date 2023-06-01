@@ -203,108 +203,85 @@ const statueNames = [
 ].forEach((name, idx) => {
   gltfLoader.load(`./assets/data/${name}`, (gltf) => {
     const model = gltf.scene;
-    model.scale.set(10, 10, 10);
-    model.position.x = 20;
-    model.position.y = radius;
+    model.scale.set(6, 6, 6);
+    model.position.x = 4;
+    model.position.y = 2 + radius;
+    model.rotation.y = Math.PI / 2;
+    model.updateMatrixWorld(true);
 
-    // const geometryTru = new THREE.CylinderGeometry(7, 7, 10, 32);
-    // const materialTru = new THREE.MeshBasicMaterial({
-    //   color: "#FFC125",
-    //   opacity: 0.5,
-    //   transparent: true,
-    //   side: THREE.DoubleSide,
-    // });
-    // const cylinder = new THREE.Mesh(geometryTru, materialTru);
-
-    // model.add(cylinder);
-
-    // const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
-    // const boxMesh = new THREE.Mesh(boxGeometry);
-    // boxMesh.scale.set(0.15, 0.15, 0.15);
-    // model.add(boxMesh);
-
-    const geometry = new THREE.TorusGeometry(1, 0.1, 16, 100);
+    const geometry = new THREE.TorusGeometry(1, 0.1, 100, 100);
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const torus = new THREE.Mesh(geometry, material);
+    torus.name = "circle";
     torus.rotation.set(Math.PI / 2, 0, 0);
-    torus.position.set(10, radius, 0);
-    torus.scale.set(0.9, 0.9, 0.9);
-    scene.add(torus);
+    torus.position.copy(model.position).setY(radius).setX(2);
+    torus.updateMatrixWorld(true);
 
-    model.updateMatrixWorld(true);
-    scene.add(model);
+    const box = new THREE.Box3().setFromObject(model);
+    const newPosition = new THREE.Vector3();
+    box.getCenter(newPosition);
+
+    const boxGeometry = new THREE.BoxGeometry(2, 2, 3);
+    const boxMesh = new THREE.Mesh(
+      boxGeometry,
+      new THREE.MeshBasicMaterial({
+        color: "white",
+        transparent: true,
+        opacity: 0.3,
+      })
+    );
+    boxMesh.name = "box";
+    boxMesh.position.copy(newPosition);
+    boxMesh.scale.addScalar(-0.01);
+    boxMesh.visible = false;
+    boxMesh.updateMatrixWorld(true);
+
+    const statuePedestal = new THREE.Mesh(boxGeometry);
+    statuePedestal.position.copy(newPosition).setY(1 + radius);
+    statuePedestal.name = "statuePedestal";
+    statuePedestal.updateMatrixWorld(true);
+
+    const group = new THREE.Group();
+    group.add(model);
+    group.add(boxMesh);
+    group.add(torus);
+    group.add(statuePedestal);
+    group.position.x = 40;
+    group.updateMatrixWorld(true);
+
+    scene.add(group);
 
     const mixer = new THREE.AnimationMixer(model);
     mixer.clipAction(gltf.animations[0]).play();
-    animationsMap.set(name, mixer);
 
-    const toMerge = {};
-    model.traverse((c) => {
+    const geometries = [];
+    group.traverse((c) => {
       if (c.isMesh) {
-        const hex = c.name + c.type;
-        toMerge[hex] = toMerge[hex] || [];
-        toMerge[hex].push(c);
+        const geom = c.geometry.clone();
+        geom.name = c.name;
+        geom.applyMatrix4(c.matrixWorld);
+        geometries.push(geom);
       }
     });
 
-    const environment = new THREE.Group();
-    for (const hex in toMerge) {
-      const arr = toMerge[hex];
-      const visualGeometries = {};
-      arr.forEach((mesh) => {
-        if (mesh.isMesh) {
-          const key =
-            mesh.name.split("_")[2] +
-            Object.keys(mesh.geometry.attributes).length;
-          visualGeometries[key] = visualGeometries[key] || [];
-          const geom = mesh.geometry.clone();
-          geom.applyMatrix4(mesh.matrixWorld);
-          visualGeometries[key].push(geom);
-        }
-      });
+    geometries.forEach((geo) => {
+      geo.boundsTree = new MeshBVH(geo);
+      const collider = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: "red", wireframe: true })
+      );
 
-      for (const key in visualGeometries) {
-        // Merges a set of geometries into a single instance. All geometries must have compatible attributes
-        try {
-          const newGeom = BufferGeometryUtils.mergeGeometries(
-            visualGeometries[key]
-          );
-          const newMesh = new THREE.Mesh(
-            newGeom,
-            new THREE.MeshStandardMaterial({
-              color: parseInt(hex),
-              shadowSide: 2,
-            })
-          );
+      if (geo.name === "box") {
+        collider.material = new THREE.MeshBasicMaterial({
+          color: "gray",
+          transparent: true,
+          opacity: 0.5,
+        });
 
-          environment.add(newMesh);
-        } catch (error) {
-          console.log(key);
-        }
+        scene.add(collider);
       }
-
-      // A utility class for taking a set of SkinnedMeshes or morph target geometry and baking it into a single, static geometry that a BVH can be generated for.
-      const staticGenerator = new StaticGeometryGenerator(environment);
-      staticGenerator.attributes = ["position"];
-
-      const mergedGeometry = staticGenerator.generate();
-      mergedGeometry.boundsTree = new MeshBVH(mergedGeometry, {
-        lazyGeneration: false,
-      });
-
-      const collider = new THREE.Mesh(mergedGeometry);
-      collider.material.wireframe = true;
-      collider.material.opacity = 0.5;
-      collider.material.transparent = true;
-
-      colliderMap.set("sutu", collider);
-
-      const visualizer = new MeshBVHVisualizer(collider);
-
-      // scene.add(visualizer);
-      scene.add(collider);
-      // scene.add(environment);
-    }
+      colliderMap.set(`${name}-${geo.name}`, collider);
+    });
   });
 });
 
@@ -343,8 +320,6 @@ function animate() {
   requestAnimationFrame(animate);
 
   const deltaTime = clock.getDelta();
-
-  // animationsMap.forEach((m) => m.update(deltaTime));
 
   // // update postion character when keys pressed
   if (player && colliderMap.has("map")) {
@@ -417,7 +392,36 @@ function animate() {
     // const lineObject = new THREE.Line(geometry, material);
     // scene.add(lineObject);
 
-    colliderMap.forEach((collider) => {
+    colliderMap.forEach((collider, key) => {
+      if (/circle/.test(key)) {
+        const k = key.split("-")[0];
+        const box = colliderMap.get(`${k}-box`);
+        let isCollider = false;
+
+        collider.geometry.boundsTree.shapecast({
+          intersectsBounds: (box) => box.intersectsBox(tempBox),
+          intersectsTriangle: (tri) => {
+            const distance = tri.closestPointToSegment(
+              tempSegment,
+              tempVector,
+              tempVector2
+            );
+
+            isCollider = distance > radius;
+          },
+        });
+
+        const boxHeight = box.geometry.parameters.height;
+
+        if (isCollider) {
+          box.position.y = Math.max(box.position.y - 0.01, -boxHeight);
+        } else {
+          box.position.y = Math.min(box.position.y + 0.01, 0);
+        }
+
+        return;
+      }
+
       collider.geometry.boundsTree.shapecast({
         intersectsBounds: (box) => {
           return box.intersectsBox(tempBox);
