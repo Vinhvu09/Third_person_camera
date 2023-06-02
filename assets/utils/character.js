@@ -9,7 +9,7 @@ export default class CharacterControl {
     animations = [],
     currentAction
   ) {
-    this.model = model;
+    this.player = model;
     this.currentAction = currentAction;
     this.mixer = mixer;
     this.orbitControl = orbitControl;
@@ -23,10 +23,11 @@ export default class CharacterControl {
     this.rotateQuarternion = new THREE.Quaternion();
     this.cameraTarget = new THREE.Vector3();
 
+    this.keysPressed = {};
+    this.playerIsOnGround = false;
     this.fadeDuration = 0.2;
     this.runVelocity = 10;
     this.walkVelocity = 2;
-    this.playerIsOnGround = true;
     this.gravity = -30;
 
     this.animations.forEach((value, key) => {
@@ -38,6 +39,59 @@ export default class CharacterControl {
 
   switchRunToggle(isRun = false) {
     this.toggleRun = isRun;
+  }
+
+  initActionKeyboard() {
+    document.addEventListener("keydown", this.onKeyDown.bind(this));
+    document.addEventListener("keyup", this.onKeyUp.bind(this));
+  }
+
+  onKeyUp(event) {
+    this.keysPressed[event.key.toLowerCase()] = false;
+  }
+
+  onKeyDown(event) {
+    this.keysPressed[event.key.toLowerCase()] = true;
+  }
+
+  handleMovement(deltaTime) {
+    if (this.playerIsOnGround) {
+      this.jumpVelocity.y = deltaTime * this.gravity;
+    } else {
+      this.jumpVelocity.y += deltaTime * this.gravity;
+    }
+
+    // Example addScaledVector
+    // const v1 = new THREE.Vector3(1, 2, 3);
+    // const v2 = new THREE.Vector3(4, 5, 6);
+    // const s = 2;
+    // v2.addScaledVector(v1, s);
+    // v2 sẽ trở thành (6, 9, 12)
+    this.player.position.addScaledVector(this.jumpVelocity, deltaTime);
+    const angle = this.control.getAzimuthalAngle();
+    if (keysPressed["w"]) {
+      // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
+      this.walkDirection.set(0, 0, -1);
+    }
+
+    if (keysPressed["s"]) {
+      this.walkDirection.set(0, 0, 1);
+    }
+
+    if (keysPressed["a"]) {
+      this.walkDirection.set(-1, 0, 0);
+    }
+
+    if (keysPressed["d"]) {
+      this.walkDirection.set(1, 0, 0);
+    }
+    this.walkDirection.applyAxisAngle(this.rotateAngle, angle);
+    player.position.addScaledVector(
+      this.walkDirection,
+      playerSpeed * deltaTime
+    );
+
+    player.updateMatrixWorld();
   }
 
   update(delta, keysPressed) {
@@ -65,22 +119,23 @@ export default class CharacterControl {
     this.mixer.update(delta);
 
     if (this.currentAction !== "Idle") {
-      // calculate toward camera direction
-      let angleYCameraDirection = Math.atan2(
-        this.camera.position.x - this.model.position.x,
-        this.camera.position.z - this.model.position.z
-      );
-
       // diagonal movement angle offset
       let directionOffset = this.directionOffset(keysPressed);
+      // calculate toward camera direction
+      // let angleYCameraDirection = Math.atan2(
+      //   this.camera.position.x - this.player.position.x,
+      //   this.camera.position.z - this.player.position.z
+      // );
+      // angleYCameraDirection === angle
+      const angle = this.orbitControl.getAzimuthalAngle();
 
       // rotate model
       this.rotateQuarternion.setFromAxisAngle(
         this.rotateAngle,
-        angleYCameraDirection + directionOffset
+        angle + directionOffset
       );
 
-      this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
+      this.player.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
 
       // Old code
       // calculate direction

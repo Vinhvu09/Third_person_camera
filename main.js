@@ -16,6 +16,313 @@ import {
 } from "three-mesh-bvh";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 
+class Model3D {
+  constructor() {
+    this.init();
+    this.responsive();
+    this.play();
+  }
+
+  init() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(
+      65,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    this.renderer = new THREE.WebGL1Renderer({ antialias: true });
+    this.control = new OrbitControls(this.camera, this.renderer.domElement);
+    this.clock = new THREE.Clock();
+    this.gltfLoader = new GLTFLoader();
+
+    this.playerVelocity = new THREE.Vector3();
+    this.upVector = new THREE.Vector3(0, 1, 0);
+    this.tempVector = new THREE.Vector3();
+    this.tempVector2 = new THREE.Vector3();
+    this.tempBox = new THREE.Box3();
+    this.tempMat = new THREE.Matrix4();
+    this.tempSegment = new THREE.Line3();
+    this.playerIsOnGround = false;
+    this.player;
+
+    this.segment = new THREE.Line3(
+      new THREE.Vector3(),
+      new THREE.Vector3(0, 1, 0)
+    );
+
+    this.radius = 0.45;
+    this.gravity = -50;
+    this.playerSpeed = 10;
+
+    this.colliderMap = new Map();
+    this.animationsMap = new Map();
+  }
+
+  initLight() {
+    const light = new THREE.AmbientLight(0xffffff, 0.3);
+    this.scene.add(light);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(1, 1, 1); // Direction
+    this.scene.add(directionalLight);
+
+    const pointLight = new THREE.PointLight(0xffffff, 1);
+    pointLight.position.set(0, 3, 0); // Position
+    this.scene.add(pointLight);
+  }
+
+  play() {
+    // Check whether the browser has support WebGL
+    if (WebGL.isWebGLAvailable()) {
+      // Initiate function or other initializations here
+      document
+        .getElementById("container")
+        .appendChild(this.renderer.domElement);
+      this.animate();
+    } else {
+      const warning = WebGL.getWebGLErrorMessage();
+      document.getElementById("container").appendChild(warning);
+    }
+  }
+
+  loadModelGLTF(url) {
+    return new Promise((resolve, reject) => {
+      this.gltfLoader.load(
+        url,
+        (gltf) => {
+          const model = gltf.scene;
+          const animations = new Map();
+
+          if (gltf.animations.length !== 0) {
+            const mixer = new THREE.AnimationMixer(model);
+            gltf.animations.forEach((a) => {
+              animations.set(a.name, mixer.clipAction(a));
+            });
+          }
+
+          resolve({
+            model,
+            animations,
+          });
+        },
+        undefined,
+        (error) => {
+          reject(error);
+        }
+      );
+    });
+  }
+
+  initBVHCollider(model, options = {}) {
+    model.updateMatrixWorld(true);
+
+    const meshes = [];
+    const environment = new THREE.Group();
+    const visualGeometries = {};
+
+    model.traverse((c) => {
+      if (c.isMesh) {
+        meshes.push(c);
+      }
+    });
+
+    meshes.forEach((mesh) => {
+      let key = options.isGroupKeyByName
+        ? mesh.name
+        : mesh.name.split("_")[2] +
+          Object.keys(mesh.geometry.attributes).length;
+
+      visualGeometries[key] = visualGeometries[key] || [];
+      const geom = mesh.geometry.clone();
+      geom.applyMatrix4(mesh.matrixWorld);
+      visualGeometries[key].push(geom);
+    });
+
+    for (const key in visualGeometries) {
+      // Merges a set of geometries into a single instance.
+      // All geometries must have compatible attributes
+      try {
+        const newGeom = BufferGeometryUtils.mergeGeometries(
+          visualGeometries[key]
+        );
+        const newMesh = new THREE.Mesh(
+          newGeom,
+          new THREE.MeshStandardMaterial({
+            color: 0xf33333,
+            shadowSide: 2,
+          })
+        );
+
+        environment.add(newMesh);
+      } catch (error) {
+        console.log(key);
+      }
+    }
+
+    // A utility class for taking a set of SkinnedMeshes or morph target geometry and baking it into a single,
+    // static geometry that a BVH can be generated for.
+    const staticGenerator = new StaticGeometryGenerator(environment);
+    staticGenerator.attributes = ["position"];
+
+    const mergedGeometry = staticGenerator.generate();
+    mergedGeometry.boundsTree = new MeshBVH(mergedGeometry, {
+      lazyGeneration: false,
+    });
+
+    const collider = new THREE.Mesh(mergedGeometry);
+    collider.material.wireframe = true;
+    const visualizer = new MeshBVHVisualizer(collider);
+
+    return {
+      collider,
+      visualizer,
+      environment,
+    };
+  }
+
+  responsive() {
+    window.addEventListener("resize", this.onWindowResize.bind(this));
+  }
+
+  onWindowResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.render(scene, camera);
+  }
+
+  animate() {
+    requestAnimationFrame(this.animate.bind(this));
+    const deltaTime = this.clock.getDelta();
+
+    return;
+    // // update postion character when keys pressed
+    if (player && colliderMap.has("map")) {
+      const matrixWorld = colliderMap.get("map").matrixWorld;
+      // Create box into radius and matrix player(include: position, scale, rotation)
+      // Box preresent for player to check collision with geometries map
+      tempBox.makeEmpty();
+
+      tempMat.copy(matrixWorld).invert();
+      tempSegment.copy(segment);
+      tempSegment.start.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
+      tempSegment.end.applyMatrix4(player.matrixWorld).applyMatrix4(tempMat);
+
+      tempBox.expandByPoint(tempSegment.start);
+      tempBox.expandByPoint(tempSegment.end);
+      tempBox.min.addScalar(-radius);
+      tempBox.max.addScalar(radius);
+
+      colliderMap.forEach((collider, key) => {
+        if (/circle/.test(key)) {
+          const k = key.split("-")[0];
+          const box = colliderMap.get(`${k}-box`);
+          let isCollider = false;
+
+          collider.geometry.boundsTree.shapecast({
+            intersectsBounds: (box) => box.intersectsBox(tempBox),
+            intersectsTriangle: (tri) => {
+              const distance = tri.closestPointToSegment(
+                tempSegment,
+                tempVector,
+                tempVector2
+              );
+
+              isCollider = distance > radius;
+            },
+          });
+
+          const boxHeight = box.geometry.parameters.height;
+
+          if (isCollider) {
+            box.position.y = Math.max(box.position.y - 0.01, -boxHeight);
+          } else {
+            box.position.y = Math.min(box.position.y + 0.01, 0);
+          }
+
+          return;
+        }
+
+        collider.geometry.boundsTree.shapecast({
+          intersectsBounds: (box) => {
+            return box.intersectsBox(tempBox);
+          },
+          intersectsTriangle: (tri) => {
+            const triPoint = tempVector;
+            const capsulePoint = tempVector2;
+
+            const distance = tri.closestPointToSegment(
+              tempSegment,
+              triPoint,
+              capsulePoint
+            );
+
+            if (distance < radius) {
+              const depth = radius - distance;
+              const direction = capsulePoint.sub(triPoint).normalize();
+              tempSegment.start.addScaledVector(direction, depth);
+              tempSegment.end.addScaledVector(direction, depth);
+            }
+          },
+        });
+      });
+
+      const newPosition = tempVector;
+      newPosition.copy(tempSegment.start).applyMatrix4(matrixWorld);
+
+      const deltaVector = tempVector2;
+      deltaVector.subVectors(newPosition, player.position);
+      playerIsOnGround =
+        deltaVector.y > Math.abs(deltaTime * playerVelocity.y * 0.25);
+
+      const offset = Math.max(0.0, deltaVector.length() - 1e-5);
+      deltaVector.normalize().multiplyScalar(offset);
+      player.position.add(deltaVector);
+
+      if (playerIsOnGround) {
+        playerVelocity.set(0, 0, 0);
+      } else {
+        deltaVector.normalize();
+        playerVelocity.addScaledVector(
+          deltaVector,
+          -deltaVector.dot(playerVelocity)
+        );
+      }
+
+      characterControl.update(deltaTime, keysPressed);
+
+      // if the player has fallen too far below the level reset their position to the start
+      if (player.position.y < -30) {
+        playerVelocity.set(0, 0, 0);
+        player.position.set(1, radius, 0);
+      }
+
+      // adjust the camera
+      camera.position.sub(control.target);
+      control.target.copy(player.position);
+      camera.position.add(player.position);
+    }
+
+    if (false) {
+      control.maxPolarAngle = Math.PI;
+      control.minDistance = 1e-4;
+      control.maxDistance = 1e-4;
+    } else {
+      control.maxPolarAngle = Math.PI / 2;
+      control.minDistance = 1;
+      control.maxDistance = 50;
+    }
+
+    // UPDATE ANIMATON
+    control.update();
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.render(scene, camera);
+  }
+}
+
+// new Model3D();
+
 // SETUP
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -329,6 +636,8 @@ function animate() {
       playerVelocity.y += deltaTime * gravity;
     }
 
+    // console.log(playerVelocity);
+
     player.position.addScaledVector(playerVelocity, deltaTime);
 
     // move the player
@@ -336,7 +645,7 @@ function animate() {
     if (keysPressed["w"]) {
       // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
       tempVector.set(0, 0, -1).applyAxisAngle(upVector, angle);
-
+      console.log(angle);
       // Example addScaledVector
       // const v1 = new THREE.Vector3(1, 2, 3);
       // const v2 = new THREE.Vector3(4, 5, 6);
