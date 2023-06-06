@@ -96,6 +96,7 @@ class Model3D {
     playerModel.model.position.set(0, -this.radius, 0);
     group.add(playerModel.model);
     this.scene.add(group);
+
     this.playerControl = new CharacterControl(
       group,
       playerModel.mixer,
@@ -104,8 +105,6 @@ class Model3D {
       playerModel.animations,
       ACTION_TYPE.stand
     );
-
-    console.log(this.playerControl.player);
 
     this.playerControl.player.rotateOnWorldAxis(
       new THREE.Vector3(0, 1, 0),
@@ -314,10 +313,18 @@ class Model3D {
     this.playerControl.update(deltaTime);
     this.handleCollision(deltaTime);
 
+    // Tăng chiều cao của camera
+    const heightOffset = 1.5; // Giá trị tùy chỉnh cho chiều cao
+    const cameraHeight = this.playerControl.player.position.y + heightOffset;
+
     // adjust the camera
     this.camera.position.sub(this.control.target);
     this.control.target.copy(this.playerControl.player.position);
+    this.control.target.y = cameraHeight;
+    // this.camera.position.add(this.playerControl.player.position);
+    // Đặt vị trí camera lên đầu player model
     this.camera.position.add(this.playerControl.player.position);
+    this.camera.position.y = cameraHeight;
 
     if (false) {
       this.control.maxPolarAngle = Math.PI;
