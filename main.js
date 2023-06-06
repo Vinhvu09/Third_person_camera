@@ -321,10 +321,7 @@ class Model3D {
     this.camera.position.sub(this.control.target);
     this.control.target.copy(this.playerControl.player.position);
     this.control.target.y = cameraHeight;
-    // this.camera.position.add(this.playerControl.player.position);
-    // Đặt vị trí camera lên đầu player model
-    this.camera.position.add(this.playerControl.player.position);
-    this.camera.position.y = cameraHeight;
+    this.camera.position.add(this.control.target);
 
     if (false) {
       this.control.maxPolarAngle = Math.PI;
