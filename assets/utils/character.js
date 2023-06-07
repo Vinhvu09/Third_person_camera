@@ -30,6 +30,7 @@ export default class CharacterControl {
     this.gravity = -30;
     this.keysPressed = {};
     this.playerIsOnGround = false;
+    this.isJumpPressed = false;
 
     this.animations.forEach((value, key) => {
       if (key === currentAction) {
@@ -53,8 +54,9 @@ export default class CharacterControl {
     this.switchRunToggle(event.shiftKey);
     if (event.code === "Space") {
       if (this.playerIsOnGround) {
-        this.jumpVelocity.y = 10;
+        this.jumpVelocity.y = 7;
         this.playerIsOnGround = false;
+        this.isJumpPressed = true;
       }
     }
     this.keysPressed[event.key.toLowerCase()] = false;
@@ -65,9 +67,20 @@ export default class CharacterControl {
     this.keysPressed[event.key.toLowerCase()] = true;
   }
 
+  changeDirection(x, y, z) {
+    // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
+    this.walkDirection.set(x, y, z).applyAxisAngle(this.rotateAngle, angle);
+    this.player.position.addScaledVector(
+      this.walkDirection,
+      velocity * deltaTime
+    );
+  }
+
   handleMovement(deltaTime) {
     if (this.playerIsOnGround) {
       this.jumpVelocity.y = deltaTime * this.gravity;
+
+      this.isJumpPressed = false;
     } else {
       this.jumpVelocity.y += deltaTime * this.gravity;
     }
@@ -124,7 +137,7 @@ export default class CharacterControl {
     const isMovementPressed = Object.values(MOVEMENT_KEYS).some(
       (key) => this.keysPressed[key] === true
     );
-    // const isJumpPressed = this.keysPressed[JUMP_KEYS];
+
     let action = ACTION_TYPE.stand;
     if (isMovementPressed) {
       action = ACTION_TYPE.walk;
@@ -134,9 +147,9 @@ export default class CharacterControl {
       }
     }
 
-    // if (isJumpPressed) {
-    //   action = ACTION_TYPE.jump;
-    // }
+    if (this.isJumpPressed) {
+      action = ACTION_TYPE.jump;
+    }
 
     if (this.currentAction !== action) {
       const prevAction = this.animations.get(this.currentAction);

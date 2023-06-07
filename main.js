@@ -90,7 +90,8 @@ class Model3D {
   }
 
   async initModel() {
-    const playerModel = await this.loadModelGLTF(`${BASE_URL}Soldier.glb`);
+    console.log(this.control);
+    const playerModel = await this.loadModelGLTF(`${BASE_URL}lala.glb`);
 
     const group = new THREE.Group();
     playerModel.model.position.set(0, -this.radius, 0);
@@ -211,7 +212,7 @@ class Model3D {
     const visualizer = new MeshBVHVisualizer(collider);
     visualizer.depth = VISUALIZER_DEEP;
     visualizer.update();
-    this.scene.add(collider);
+    // this.scene.add(collider);
     // this.scene.add(visualizer);
     this.colliderMap.set(key, collider);
   }
@@ -314,7 +315,7 @@ class Model3D {
     this.handleCollision(deltaTime);
 
     // Tăng chiều cao của camera
-    const heightOffset = 1.5; // Giá trị tùy chỉnh cho chiều cao
+    const heightOffset = 1; // Giá trị tùy chỉnh cho chiều cao
     const cameraHeight = this.playerControl.player.position.y + heightOffset;
 
     // adjust the camera
@@ -328,9 +329,10 @@ class Model3D {
       this.control.minDistance = 1e-4;
       this.control.maxDistance = 1e-4;
     } else {
-      this.control.maxPolarAngle = Math.PI / 2;
+      this.control.maxPolarAngle = Math.PI - 1.3;
+      this.control.minPolarAngle = 0.5;
       this.control.minDistance = 1;
-      this.control.maxDistance = 1000;
+      this.control.maxDistance = 4;
     }
 
     // UPDATE ANIMATON
