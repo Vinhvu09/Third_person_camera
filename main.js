@@ -33,7 +33,7 @@ class Model3D {
   init() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
-      65,
+      80,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
@@ -62,14 +62,14 @@ class Model3D {
   }
 
   initLight() {
-    const light = new THREE.AmbientLight(0xffffff, 0.3);
+    const light = new THREE.AmbientLight(0xffffff, 0.1);
     this.scene.add(light);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.1);
     directionalLight.position.set(1, 1, 1); // Direction
     this.scene.add(directionalLight);
 
-    const pointLight = new THREE.PointLight(0xffffff, 1);
+    const pointLight = new THREE.PointLight(0xffffff, 0.1);
     pointLight.position.set(0, 3, 0); // Position
     this.scene.add(pointLight);
   }
@@ -90,12 +90,13 @@ class Model3D {
   }
 
   async initModel() {
-    console.log(this.control);
-    const playerModel = await this.loadModelGLTF(`${BASE_URL}lala.glb`);
+    const playerModel = await this.loadModelGLTF(`${BASE_URL}person.glb`);
+    playerModel.model.rotation.set(0, Math.PI, 0);
+    playerModel.model.position.set(0, -this.radius, 0);
 
     const group = new THREE.Group();
-    playerModel.model.position.set(0, -this.radius, 0);
     group.add(playerModel.model);
+    group.updateMatrixWorld(true);
     this.scene.add(group);
 
     this.playerControl = new CharacterControl(
@@ -104,21 +105,26 @@ class Model3D {
       this.control,
       this.camera,
       playerModel.animations,
-      ACTION_TYPE.stand
+      ACTION_TYPE.normal
     );
 
-    this.playerControl.player.rotateOnWorldAxis(
-      new THREE.Vector3(0, 1, 0),
-      Math.PI / 2
-    );
+    // this.playerControl.player.rotateOnWorldAxis(
+    //   new THREE.Vector3(0, 1, 0),
+    //   -Math.PI / 2
+    // );
 
-    const mapModel = await this.loadModelGLTF(
-      `${BASE_URL}damned_soul_purgatory.glb`
-    );
-    mapModel.animations.get("Scene").play();
+    const mapModel = await this.loadModelGLTF(`${BASE_URL}map.glb`);
+    mapModel.model.scale.set(0.05, 0.05, 0.05);
+    // mapModel.model.position.set(0, -this.radius, 0);
+    mapModel.animations.forEach((animation) => {
+      console.log(animation);
+      animation.play();
+    });
     this.animationsMap.set("map", mapModel);
     this.initBVHCollider("map", mapModel.model);
 
+    // Adjust the camera
+    this.camera.position.set(0, 0, 5);
     this.play();
   }
 
@@ -165,10 +171,16 @@ class Model3D {
     });
 
     meshes.forEach((mesh) => {
-      let key = options.isGroupKeyByName
-        ? mesh.name
-        : mesh.name.split("_")[2] +
-          Object.keys(mesh.geometry.attributes).length;
+      let key = "";
+      if (mesh.name) {
+        key = options.isGroupKeyByName
+          ? mesh.name
+          : `${mesh.name.split("_")[1]} ${
+              Object.keys(mesh.geometry.attributes).length
+            }`;
+      } else {
+        key = Date.now();
+      }
 
       visualGeometries[key] = visualGeometries[key] || [];
       const geom = mesh.geometry.clone();
@@ -212,7 +224,7 @@ class Model3D {
     const visualizer = new MeshBVHVisualizer(collider);
     visualizer.depth = VISUALIZER_DEEP;
     visualizer.update();
-    // this.scene.add(collider);
+    this.scene.add(collider);
     // this.scene.add(visualizer);
     this.colliderMap.set(key, collider);
   }
@@ -249,8 +261,8 @@ class Model3D {
       this.tempBox.min.addScalar(-this.radius);
       this.tempBox.max.addScalar(this.radius);
 
-      // const boxHelper = new THREE.Box3Helper(this.tempBox, 0xffff00);
-      // this.scene.add(boxHelper);
+      const boxHelper = new THREE.Box3Helper(this.tempBox, 0xffff00);
+      this.scene.add(boxHelper);
 
       collider.geometry.boundsTree.shapecast({
         intersectsBounds: (box) => box.intersectsBox(this.tempBox),
@@ -276,6 +288,7 @@ class Model3D {
 
     const deltaVector = this.tempVector2;
     deltaVector.subVectors(newPosition, this.playerControl.player.position);
+    console.log(deltaVector.y);
     this.playerControl.playerIsOnGround =
       deltaVector.y >
       Math.abs(deltaTime * this.playerControl.jumpVelocity.y * 0.25);
@@ -294,9 +307,9 @@ class Model3D {
     }
 
     // if the player has fallen too far below the level reset their position to the start
-    if (this.playerControl.player.position.y < -20) {
+    if (this.playerControl.player.position.y < -10) {
       this.playerControl.jumpVelocity.set(0, 0, 0);
-      this.playerControl.player.position.set(1, this.radius, 0);
+      this.playerControl.player.position.set(0, 0, 0);
     }
   }
 
@@ -314,14 +327,10 @@ class Model3D {
     this.playerControl.update(deltaTime);
     this.handleCollision(deltaTime);
 
-    // Tăng chiều cao của camera
-    const heightOffset = 1; // Giá trị tùy chỉnh cho chiều cao
-    const cameraHeight = this.playerControl.player.position.y + heightOffset;
-
     // adjust the camera
     this.camera.position.sub(this.control.target);
     this.control.target.copy(this.playerControl.player.position);
-    this.control.target.y = cameraHeight;
+    this.control.target.y = this.playerControl.player.position.y + 0.8;
     this.camera.position.add(this.control.target);
 
     if (false) {

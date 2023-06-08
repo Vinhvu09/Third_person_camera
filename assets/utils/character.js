@@ -1,19 +1,17 @@
 import * as THREE from "three";
-import { ACTION_TYPE, JUMP_KEYS, MOVEMENT_KEYS } from "../constants/common";
+import {
+  ACTION_TYPE,
+  CHARACTER_CONTROL,
+  KEYS,
+  MOVEMENT_KEYS,
+} from "../constants/common";
 
 export default class CharacterControl {
-  constructor(
-    model,
-    mixer,
-    orbitControl,
-    camera,
-    animations = [],
-    currentAction
-  ) {
+  constructor(model, mixer, control, camera, animations = [], currentAction) {
     this.player = model;
     this.currentAction = currentAction;
     this.mixer = mixer;
-    this.orbitControl = orbitControl;
+    this.control = control;
     this.camera = camera;
     this.animations = animations;
     this.toggleRun = false;
@@ -24,13 +22,14 @@ export default class CharacterControl {
     this.rotateQuarternion = new THREE.Quaternion();
     this.cameraTarget = new THREE.Vector3();
 
-    this.fadeDuration = 0.2;
-    this.runVelocity = 10;
-    this.walkVelocity = 2;
-    this.gravity = -30;
+    this.fadeDuration = CHARACTER_CONTROL.duration;
+    this.runVelocity = CHARACTER_CONTROL.run;
+    this.walkVelocity = CHARACTER_CONTROL.walk;
+    this.gravity = CHARACTER_CONTROL.gravity;
     this.keysPressed = {};
     this.playerIsOnGround = false;
     this.isJumpPressed = false;
+    this.isSitDownPressed = false;
 
     this.animations.forEach((value, key) => {
       if (key === currentAction) {
@@ -41,35 +40,55 @@ export default class CharacterControl {
     this.initActionKeyboard();
   }
 
-  switchRunToggle(isRun = false) {
-    this.toggleRun = isRun;
-  }
-
   initActionKeyboard() {
     document.addEventListener("keydown", this.onKeyDown.bind(this));
     document.addEventListener("keyup", this.onKeyUp.bind(this));
   }
 
   onKeyUp(event) {
+    const key =
+      event.key.toLowerCase().trim() || event.code.toLowerCase().trim();
+
     this.switchRunToggle(event.shiftKey);
-    if (event.code === "Space") {
-      if (this.playerIsOnGround) {
-        this.jumpVelocity.y = 7;
-        this.playerIsOnGround = false;
-        this.isJumpPressed = true;
-      }
-    }
-    this.keysPressed[event.key.toLowerCase()] = false;
+    this.handleJump(key);
+    this.keysPressed[key] = false;
   }
 
   onKeyDown(event) {
+    const key = event.key.toLowerCase();
+
     this.switchRunToggle(event.shiftKey);
-    this.keysPressed[event.key.toLowerCase()] = true;
+    this.handleSitDown(key);
+    this.keysPressed[key] = true;
   }
 
-  changeDirection(x, y, z) {
+  switchRunToggle(isRun = false) {
+    this.toggleRun = isRun;
+  }
+
+  handleJump(key) {
+    if (key !== KEYS.space || this.isSitDownPressed) return;
+
+    if (this.playerIsOnGround) {
+      this.jumpVelocity.y = CHARACTER_CONTROL.jump;
+      this.playerIsOnGround = false;
+      this.isJumpPressed = true;
+    }
+  }
+
+  handleSitDown(key) {
+    if (key !== KEYS.c) return;
+
+    this.isSitDownPressed = !this.isSitDownPressed;
+  }
+
+  changeDirection(axis, angle, deltaTime) {
+    const velocity =
+      this.currentAction == ACTION_TYPE.run
+        ? this.runVelocity
+        : this.walkVelocity;
     // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
-    this.walkDirection.set(x, y, z).applyAxisAngle(this.rotateAngle, angle);
+    this.walkDirection.set(...axis).applyAxisAngle(this.rotateAngle, angle);
     this.player.position.addScaledVector(
       this.walkDirection,
       velocity * deltaTime
@@ -77,59 +96,47 @@ export default class CharacterControl {
   }
 
   handleMovement(deltaTime) {
-    if (this.playerIsOnGround) {
-      this.jumpVelocity.y = deltaTime * this.gravity;
+    // Stop rotation character by camera when stand or sit down
+    if ([ACTION_TYPE.normal, ACTION_TYPE.sit].includes(this.currentAction)) {
+      return true;
+    }
 
+    if (this.playerIsOnGround) {
       this.isJumpPressed = false;
+      this.jumpVelocity.y = deltaTime * this.gravity;
     } else {
       this.jumpVelocity.y += deltaTime * this.gravity;
     }
 
     this.player.position.addScaledVector(this.jumpVelocity, deltaTime);
+    const angle = this.control.getAzimuthalAngle();
+    const directionOffset = this.directionOffset(this.keysPressed);
 
-    const velocity =
-      this.currentAction == "Run" ? this.runVelocity : this.walkVelocity;
-    const angle = this.orbitControl.getAzimuthalAngle();
     if (this.keysPressed[MOVEMENT_KEYS.up]) {
-      // applyAxisAngle: quay vector xung quanh một trục (0, 1, 0) => trục Y và góc quay đã cho => control.
-      this.walkDirection.set(0, 0, -1).applyAxisAngle(this.rotateAngle, angle);
-      this.player.position.addScaledVector(
-        this.walkDirection,
-        velocity * deltaTime
-      );
+      this.changeDirection([0, 0, -1], angle, deltaTime);
     }
 
     if (this.keysPressed[MOVEMENT_KEYS.down]) {
-      this.walkDirection.set(0, 0, 1).applyAxisAngle(this.rotateAngle, angle);
-      this.player.position.addScaledVector(
-        this.walkDirection,
-        velocity * deltaTime
-      );
+      this.changeDirection([0, 0, 1], angle, deltaTime);
     }
 
     if (this.keysPressed[MOVEMENT_KEYS.left]) {
-      this.walkDirection.set(-1, 0, 0).applyAxisAngle(this.rotateAngle, angle);
-      this.player.position.addScaledVector(
-        this.walkDirection,
-        velocity * deltaTime
-      );
+      this.changeDirection([-1, 0, 0], angle, deltaTime);
     }
 
     if (this.keysPressed[MOVEMENT_KEYS.right]) {
-      this.walkDirection.set(1, 0, 0).applyAxisAngle(this.rotateAngle, angle);
-      this.player.position.addScaledVector(
-        this.walkDirection,
-        velocity * deltaTime
-      );
+      this.changeDirection([1, 0, 0], angle, deltaTime);
     }
 
-    const directionOffset = this.directionOffset(this.keysPressed);
-    // rotate model
+    // rotate character
     this.rotateQuarternion.setFromAxisAngle(
       this.rotateAngle,
       angle + directionOffset
     );
-    this.player.quaternion.rotateTowards(this.rotateQuarternion, 0.15);
+    this.player.quaternion.rotateTowards(
+      this.rotateQuarternion,
+      CHARACTER_CONTROL.speedRotate
+    );
     this.player.updateMatrixWorld(true);
   }
 
@@ -138,22 +145,32 @@ export default class CharacterControl {
       (key) => this.keysPressed[key] === true
     );
 
-    let action = ACTION_TYPE.stand;
-    if (isMovementPressed) {
-      action = ACTION_TYPE.walk;
+    let action = ACTION_TYPE.normal;
+    if (this.isSitDownPressed) {
+      action = ACTION_TYPE.sit;
+    } else {
+      if (isMovementPressed) {
+        action = ACTION_TYPE.walk;
+      }
 
-      if (this.toggleRun) {
+      if (isMovementPressed && this.toggleRun) {
         action = ACTION_TYPE.run;
       }
-    }
 
-    if (this.isJumpPressed) {
-      action = ACTION_TYPE.jump;
+      if (this.isJumpPressed) {
+        action = ACTION_TYPE.jump;
+      }
     }
 
     if (this.currentAction !== action) {
       const prevAction = this.animations.get(this.currentAction);
       const currentAction = this.animations.get(action);
+
+      if (action === ACTION_TYPE.sit) {
+        currentAction.setLoop(THREE.LoopRepeat, 1);
+        currentAction.clampWhenFinished = true;
+        currentAction.timeScale = -1.5;
+      }
 
       prevAction.fadeOut(this.fadeDuration);
       currentAction.reset().fadeIn(this.fadeDuration).play();
