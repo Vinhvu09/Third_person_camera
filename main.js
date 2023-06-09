@@ -113,8 +113,8 @@ class Model3D {
     //   -Math.PI / 2
     // );
 
-    const mapModel = await this.loadModelGLTF(`${BASE_URL}map.glb`);
-    mapModel.model.scale.set(6, 4, 6);
+    const mapModel = await this.loadModelGLTF(`${BASE_URL}canhHome3.glb`);
+    // mapModel.model.scale.set(6, 4, 6);
     mapModel.model.position.set(0, -this.radius, 0);
     mapModel.animations?.forEach((animation) => {
       // animation.play();
@@ -157,6 +157,9 @@ class Model3D {
   }
 
   initBVHCollider(key, model, options = {}) {
+    // const box = new THREE.Box3();
+    // box.setFromObject(model);
+    // box.getCenter(model.position).negate();
     model.updateMatrixWorld(true);
 
     const meshes = [];
@@ -164,15 +167,10 @@ class Model3D {
     const visualGeometries = {};
 
     model.traverse((c) => {
-      if (c.name === "Object_9") {
-        console.log(c);
-      }
       if (c.isMesh) {
         meshes.push(c);
       }
     });
-
-    // console.log(mesh);
 
     meshes.forEach((mesh) => {
       let key = "";
