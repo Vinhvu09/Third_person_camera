@@ -115,9 +115,8 @@ class Model3D {
 
     const mapModel = await this.loadModelGLTF(`${BASE_URL}map.glb`);
     mapModel.model.scale.set(0.05, 0.05, 0.05);
-    // mapModel.model.position.set(0, -this.radius, 0);
+    mapModel.model.position.set(0, -this.radius, 0);
     mapModel.animations.forEach((animation) => {
-      console.log(animation);
       animation.play();
     });
     this.animationsMap.set("map", mapModel);
@@ -187,6 +186,8 @@ class Model3D {
       geom.applyMatrix4(mesh.matrixWorld);
       visualGeometries[key].push(geom);
     });
+
+    console.log(visualGeometries);
 
     for (const key in visualGeometries) {
       // Merges a set of geometries into a single instance.
@@ -261,8 +262,8 @@ class Model3D {
       this.tempBox.min.addScalar(-this.radius);
       this.tempBox.max.addScalar(this.radius);
 
-      const boxHelper = new THREE.Box3Helper(this.tempBox, 0xffff00);
-      this.scene.add(boxHelper);
+      // const boxHelper = new THREE.Box3Helper(this.tempBox, 0xffff00);
+      // this.scene.add(boxHelper);
 
       collider.geometry.boundsTree.shapecast({
         intersectsBounds: (box) => box.intersectsBox(this.tempBox),
@@ -288,7 +289,7 @@ class Model3D {
 
     const deltaVector = this.tempVector2;
     deltaVector.subVectors(newPosition, this.playerControl.player.position);
-    console.log(deltaVector.y);
+
     this.playerControl.playerIsOnGround =
       deltaVector.y >
       Math.abs(deltaTime * this.playerControl.jumpVelocity.y * 0.25);
@@ -330,7 +331,7 @@ class Model3D {
     // adjust the camera
     this.camera.position.sub(this.control.target);
     this.control.target.copy(this.playerControl.player.position);
-    this.control.target.y = this.playerControl.player.position.y + 0.8;
+    this.control.target.y = this.playerControl.player.position.y + 1.3;
     this.camera.position.add(this.control.target);
 
     if (false) {
