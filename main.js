@@ -114,10 +114,10 @@ class Model3D {
     // );
 
     const mapModel = await this.loadModelGLTF(`${BASE_URL}map.glb`);
-    mapModel.model.scale.set(0.05, 0.05, 0.05);
+    mapModel.model.scale.set(6, 4, 6);
     mapModel.model.position.set(0, -this.radius, 0);
-    mapModel.animations.forEach((animation) => {
-      animation.play();
+    mapModel.animations?.forEach((animation) => {
+      // animation.play();
     });
     this.animationsMap.set("map", mapModel);
     this.initBVHCollider("map", mapModel.model);
@@ -164,10 +164,15 @@ class Model3D {
     const visualGeometries = {};
 
     model.traverse((c) => {
+      if (c.name === "Object_9") {
+        console.log(c);
+      }
       if (c.isMesh) {
         meshes.push(c);
       }
     });
+
+    // console.log(mesh);
 
     meshes.forEach((mesh) => {
       let key = "";
@@ -187,8 +192,6 @@ class Model3D {
       visualGeometries[key].push(geom);
     });
 
-    console.log(visualGeometries);
-
     for (const key in visualGeometries) {
       // Merges a set of geometries into a single instance.
       // All geometries must have compatible attributes
@@ -196,14 +199,7 @@ class Model3D {
         const newGeom = BufferGeometryUtils.mergeGeometries(
           visualGeometries[key]
         );
-        const newMesh = new THREE.Mesh(
-          newGeom,
-          new THREE.MeshStandardMaterial({
-            color: 0xf33333,
-            shadowSide: 2,
-          })
-        );
-
+        const newMesh = new THREE.Mesh(newGeom);
         environment.add(newMesh);
       } catch (error) {
         console.log(key);
@@ -315,6 +311,8 @@ class Model3D {
   }
 
   loadAnimation(delta) {
+    if (this.animationsMap.size !== 0) return;
+
     this.animationsMap.forEach((animation, key) => {
       animation.mixer.update(delta);
     });
