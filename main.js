@@ -74,6 +74,12 @@ class Model3D {
     this.scene.add(pointLight);
   }
 
+  createSpotLight() {
+    const spotlight = new THREE.SpotLight(0xffffff);
+    spotlight.angle = 0.5;
+    return spotlight;
+  }
+
   play() {
     // Check whether the browser has support WebGL
     if (WebGL.isWebGLAvailable()) {
@@ -113,11 +119,11 @@ class Model3D {
     //   -Math.PI / 2
     // );
 
-    const mapModel = await this.loadModelGLTF(`${BASE_URL}canhHome3.glb`);
+    const mapModel = await this.loadModelGLTF(`${BASE_URL}exhibition_room.glb`);
     // mapModel.model.scale.set(6, 4, 6);
     mapModel.model.position.set(0, -this.radius, 0);
     mapModel.animations?.forEach((animation) => {
-      // animation.play();
+      animation.play();
     });
     this.animationsMap.set("map", mapModel);
     this.initBVHCollider("map", mapModel.model);
@@ -166,9 +172,18 @@ class Model3D {
     const environment = new THREE.Group();
     const visualGeometries = {};
 
+    const spotLight = this.createSpotLight();
+
     model.traverse((c) => {
       if (c.isMesh) {
-        meshes.push(c);
+        if (/Khung|Frame|Painting/.test(c.name)) {
+          console.log(c);
+          const spotLightClone = spotLight.clone();
+          spotLightClone.target = c;
+          // this.scene.add(spotLightClone);
+        } else {
+          meshes.push(c);
+        }
       }
     });
 
@@ -187,8 +202,11 @@ class Model3D {
       visualGeometries[key] = visualGeometries[key] || [];
       const geom = mesh.geometry.clone();
       geom.applyMatrix4(mesh.matrixWorld);
+      geom.name = mesh.name;
       visualGeometries[key].push(geom);
     });
+
+    console.log(visualGeometries);
 
     for (const key in visualGeometries) {
       // Merges a set of geometries into a single instance.
@@ -197,6 +215,7 @@ class Model3D {
         const newGeom = BufferGeometryUtils.mergeGeometries(
           visualGeometries[key]
         );
+
         const newMesh = new THREE.Mesh(newGeom);
         environment.add(newMesh);
       } catch (error) {
