@@ -89,6 +89,14 @@ class Model3D {
     this.video;
     this.videoTable;
 
+    this.birdCount = 10;
+    this.birdSize = 0.2;
+    this.birds = [];
+    this.bird;
+    this.cubeSize = 5;
+    this.cubeBird;
+
+
 
     //torus
     const geometryTorus = new THREE.TorusGeometry(1.5, 0.1, 2, 100);
@@ -137,15 +145,46 @@ class Model3D {
     this.scene.add(this.particleSystem);
     this.particleSystem.position.set(7, -0.39, -24.3);
 
+
+    //bird
+    // Tạo cube
+    const geometry = new THREE.BoxGeometry(this.cubeSize, this.cubeSize, this.cubeSize);
+    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+    this.cubeBird = new THREE.Mesh(geometry, material);
+    this.scene.add(this.cubeBird);
+    this.cubeBird.position.set(7, 9.5, -24.3);
+    this.cubeBird.rotation.set(0, -Math.PI / 2, 0);
+
+    // Tạo chim
+    const birdGeometry = new THREE.BoxGeometry(this.birdSize, this.birdSize, this.birdSize);
+    const birdMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+    for (let i = 0; i < this.birdCount; i++) {
+      this.bird = new THREE.Mesh(birdGeometry, birdMaterial);
+      this.bird.position.set(
+        Math.random() * this.cubeSize - this.cubeSize / 2,
+        Math.random() * this.cubeSize - this.cubeSize / 2,
+        Math.random() * this.cubeSize - this.cubeSize / 2
+      );
+      this.bird.velocity = new THREE.Vector3(
+        Math.random() * 0.02 - 0.01,
+        Math.random() * 0.02 - 0.01,
+        Math.random() * 0.02 - 0.01
+      );
+      this.birds.push(this.bird);
+      this.scene.add(this.bird);
+    }
+
     //planepane
     this.video = document.createElement('video');
     this.video.src = '/video/Abstract.mp4';
     this.video.load();
     this.video.loop = true;
 
-    const texture = new THREE.VideoTexture(this.video);
+    // const texture = new THREE.VideoTexture(this.video);
     const boxGeometry = new THREE.BoxGeometry(20, 20, 20);
-    const boxMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, transparent: true, opacity: 0 });
+    // const boxMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, transparent: true, opacity: 0 });
+    const boxMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0 });
     this.box = new THREE.Mesh(boxGeometry, boxMaterial);
     this.scene.add(this.box);
     this.box.position.set(7, 9.5, -24.3);
@@ -165,8 +204,10 @@ class Model3D {
     this.table.position.set(10, 1, -25);
     this.table.rotation.set(0, 0, -1);
 
+
+
     //table2
-    const textureTable2 = new THREE.TextureLoader().load('/image/Tranh02.jpg');
+    const textureTable2 = new THREE.TextureLoader().load('/image/cogai&sen.jpg');
 
     const TableGeometry2 = new THREE.BoxGeometry(0.05, 2, 1.5);
     const TableMaterial2 = new THREE.MeshBasicMaterial({ map: textureTable2, transparent: true, opacity: 0 });
@@ -597,6 +638,23 @@ class Model3D {
     requestAnimationFrame(this.animate.bind(this));
     const deltaTime = this.clock.getDelta();
     TWEEN.update();
+
+    // Di chuyển chim
+    this.birds.forEach(function (bird) {
+      bird.position.add(bird.velocity);
+
+      // Xử lý va chạm với cube
+      if (
+        bird.position.x < -5 / 2 ||
+        bird.position.x > 5 / 2 ||
+        bird.position.y < -5 / 2 ||
+        bird.position.y > 5 / 2 ||
+        bird.position.z < -5 / 2 ||
+        bird.position.z > 5 / 2
+      ) {
+        bird.velocity.negate();
+      }
+    });
 
     this.water.material.uniforms['time'].value += 1.0 / 500.0;
     // Chuyển động hạt rơi tự do
